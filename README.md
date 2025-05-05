@@ -42,3 +42,5 @@ for candidate in output.candidates:
     print(candidate.request.as_curl_command(format="cmd"))
     print("===============================================")
 ```
+
+https://github.com/user-attachments/assets/790f57fc-a9a7-4991-b2fb-489bf47d8509
