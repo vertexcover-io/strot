@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import base64
+from os import getenv
 from typing import Literal, Protocol
 
 import anthropic
 import openai
 from pydantic import BaseModel, PrivateAttr, model_validator
 
-from .helpers import extract_json, guess_image_type
+from .helpers import encode_image, extract_json, guess_image_type
 from .logging import Logger
 
 LLMProvider = Literal["openai", "anthropic", "groq", "open-router"]
@@ -112,11 +112,15 @@ class LLMClient(Logger):
             case "anthropic":
                 client = anthropic.Client(api_key=api_key)
             case "openai" | "groq" | "open-router":
-                client = openai.Client(api_key=api_key)
+                base_url = None
                 if self.__provider == "groq":
-                    client.base_url = "https://api.groq.com/openai/v1/"
+                    base_url = "https://api.groq.com/openai/v1/"
+                    api_key = api_key or getenv("GROQ_API_KEY")
                 elif self.__provider == "open-router":
-                    client.base_url = "https://openrouter.ai/api/v1/"
+                    base_url = "https://openrouter.ai/api/v1/"
+                    api_key = api_key or getenv("OPENROUTER_API_KEY")
+
+                client = openai.Client(api_key=api_key, base_url=base_url)
             case _:
                 raise ValueError(f"Unsupported provider: {self.__provider}")
 
@@ -173,11 +177,7 @@ class LLMClient(Logger):
                         {"type": "text", "text": input.prompt},
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": (
-                                    f"data:image/{input._img_type};" f"base64,{base64.b64encode(image).decode('utf-8')}"
-                                )
-                            },
+                            "image_url": {"url": f"data:image/{input._img_type};base64,{encode_image(image)}"},
                         },
                     ],
                 }
@@ -224,7 +224,7 @@ class LLMClient(Logger):
                             "source": {
                                 "type": "base64",
                                 "media_type": f"image/{input._img_type}",
-                                "data": base64.b64encode(image).decode("utf-8"),
+                                "data": encode_image(image),
                             },
                         },
                     ],

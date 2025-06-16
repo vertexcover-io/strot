@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "anthropic>=0.50.0",
+    "cyclopts>=3.19.0",
     "json-repair>=0.44.1",
     "loguru>=0.7.3",
     "openai>=1.76.0",
@@ -34,10 +35,11 @@ dev-dependencies = [
     "tox-uv>=1.11.3",
     "deptry>=0.20.0",
     "mypy>=0.991",
-
     "ruff>=0.6.9",
-
 ]
+
+[project.scripts]
+ayejax = "ayejax.main:app.meta"
 
 [build-system]
 requires = ["setuptools >= 61.0"]
