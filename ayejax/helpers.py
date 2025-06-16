@@ -1,6 +1,7 @@
 import imghdr
 import re
 import threading
+from base64 import b64encode
 from difflib import get_close_matches
 
 from json_repair import repair_json
@@ -130,3 +131,16 @@ def guess_image_type(image: bytes) -> str:
         raise ValueError("image type could not be guessed")
 
     return img_type
+
+
+def encode_image(image: bytes) -> str:
+    """
+    Encode image to base64.
+
+    Args:
+        image: Image data to encode
+
+    Returns:
+        str: Base64 encoded image data
+    """
+    return b64encode(image).decode("utf-8")
