@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlencode
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
-def read(path: str | Path) -> Data:
+def read_har(path: str | Path) -> Data:
     """
     Read and parse a HAR file into a Data object.
 
@@ -85,7 +86,7 @@ class Request(BaseModel):
 
     method: str
     """The HTTP method used for the request"""
-    url: HttpUrl
+    url: str
     """The full URL of the request"""
     cookies: list[Pair] = Field(default_factory=list)
     """List of cookies sent with the request"""
@@ -95,3 +96,47 @@ class Request(BaseModel):
     """List of query parameters in the URL"""
     post_data: Optional[PostData] = Field(default=None, alias="postData")  # noqa: UP007
     """POST data included in the request body"""
+
+    @classmethod
+    def load_from_file(cls, path: str | Path) -> Request:
+        """Load a Request from a JSON file.
+
+        Args:
+            path: Path to the JSON file containing the request data
+
+        Returns:
+            Request: The loaded Request instance
+
+        Raises:
+            FileNotFoundError: If the specified file does not exist
+        """
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {path!r}")
+
+        return cls.model_validate_json(path.read_bytes())
+
+    def save_to_file(self, path: str | Path) -> None:
+        """Save the request to a JSON file.
+
+        Args:
+            path: Path where the JSON file should be saved
+        """
+        path = Path(path)
+        path.write_text(self.model_dump_json(indent=3, exclude_none=True))
+
+    def _repr_post_data(self) -> str | None:
+        """Get string representation of POST data.
+
+        Returns:
+            str | None: String representation of POST data, or None if no data
+        """
+        if self.post_data is None:
+            return None
+
+        data = "{}"
+        if self.post_data.text != "":
+            data = self.post_data.text
+        elif len(self.post_data.params) > 0:
+            data = urlencode({p.name: p.value for p in self.post_data.params})
+        return data

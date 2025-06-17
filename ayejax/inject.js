@@ -51,6 +51,9 @@ function getScrollableElements() {
     ) {
       continue;
     }
+    if (el.tagName === "HTML" || el.tagName === "BODY") {
+      continue;
+    }
 
     if (isStandardScrollable(el)) {
       if (

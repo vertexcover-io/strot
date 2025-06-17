@@ -57,18 +57,23 @@ llm_client = llm.LLMClient(
 Call the `find` function with the URL, query and LLM client
 
 ```python
-import ayejax
 import os
 
-url = "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1"
+import ayejax
+from ayejax.codegen import BashCurlCode
 
 output = ayejax.find(
-    url, "all the listed vegetables", llm_client=llm_client
+    "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1",
+    "all the listed vegetables",
+    llm_client=ayejax.llm.LLMClient(
+        provider="openai", model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY")
+    ),
 )
-for candidate in output.candidates:
-    print("===============================================")
-    print(candidate.request.as_curl_command(format="cmd"))
-    print("===============================================")
+if output.candidates:
+    request = output.candidates[0].request
+    bash_code = BashCurlCode.from_request(request)
+    with open("scrape-swiggy-category.sh", "w") as f:
+        f.write(bash_code.render())
 ```
 
 https://github.com/user-attachments/assets/790f57fc-a9a7-4991-b2fb-489bf47d8509

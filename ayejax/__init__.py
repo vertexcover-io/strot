@@ -10,14 +10,14 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 from playwright.sync_api import Response as PWResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 
 from . import llm
 from .helpers import keyword_match_ratio
 from .logging import Logger
-from .request import Request, har
+from .request import Request, read_har
 
-URL_FILTER_KEYWORDS = {"analytics", "telemetry", "events"}
+URL_FILTER_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "collect"}
 """URL filtering keywords"""
 
 URL_FILTER_PATTERN = re.compile(rf"^(?!https?:\/\/[^?]*\b(?:{'|'.join(URL_FILTER_KEYWORDS)})\b).+", re.IGNORECASE)
@@ -43,13 +43,6 @@ class Value(BaseModel):
     keywords: list[str]
     error: str
 
-    @model_validator(mode="after")
-    def validate(self) -> "Value":
-        """Validate the value"""
-        if not self.keywords:
-            raise ValueError("Keywords cannot be empty")
-        return self
-
 
 class Candidate(BaseModel):
     request: Request
@@ -59,6 +52,21 @@ class Candidate(BaseModel):
 class Output(BaseModel):
     candidates: list[Candidate]
     completions: list[llm.LLMCompletion]
+
+
+def scroll_to_id(page, element_id: str):
+    """
+    Scrolls to the element with the specified ID using scrollIntoView.
+    """
+    page.evaluate(
+        """
+        (id) => {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'auto', block: 'end' });
+        }
+    """,
+        element_id,
+    )
 
 
 class _Finder(Logger, cls_name="Finder"):
@@ -114,6 +122,7 @@ class _Finder(Logger, cls_name="Finder"):
 
         self.output.completions.append(completion)
 
+        self.logger.info(f"Raw completion | value={completion.value!r}")
         try:
             value = Value.model_validate_json(completion.value)
         except Exception as e:
@@ -122,10 +131,12 @@ class _Finder(Logger, cls_name="Finder"):
 
         if value.error:
             self.logger.error(f"Error from LLM: {value.error}")
-            raise Exception(f"could not get relevant keywords: {value.error}")
 
-        self.logger.info(f"Extracted keywords | keywords={value.keywords!r}")
-        self.keywords_list.append(value.keywords)
+        if value.keywords:
+            self.logger.info(f"Extracted keywords | keywords={value.keywords!r}")
+            self.keywords_list.append(value.keywords)
+        else:
+            self.logger.info("No keywords extracted")
 
     def map_relevant_urls(self) -> bool:
         if len(self.keywords_list) == 0:
@@ -144,7 +155,7 @@ class _Finder(Logger, cls_name="Finder"):
 
         return len(self.url_to_score) > 0
 
-    def scroll(self, page: Page):
+    def scroll(self, page: Page):  # noqa: C901
         def _eval(expr: str) -> bool:
             if not page.evaluate("() => window.ayejaxScriptAttached === true"):
                 _ = page.add_script_tag(path=Path(__file__).parent / "inject.js")
@@ -153,8 +164,11 @@ class _Finder(Logger, cls_name="Finder"):
             result = bool(page.evaluate(expr))
 
             self.logger.debug("Waiting for scroll completion")
-            time.sleep(5)
-            page.wait_for_load_state("domcontentloaded")
+            try:
+                page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception as e:
+                if f"Timeout {5000}ms exceeded" not in str(e):
+                    self.logger.error(f"Error waiting for scroll completion: {e}")
 
             self.logger.debug(f"Evaluation completed | status={result}")
             return result
@@ -249,7 +263,7 @@ class _Finder(Logger, cls_name="Finder"):
 
                 self.scroll(page)
 
-        har_data = har.read(har_file_path)
+        har_data = read_har(har_file_path)
         har_file_path.unlink()
 
         self.logger.info(f"Building candidates from HAR record | requests={len(self.url_to_score)}")

@@ -2,9 +2,51 @@ import imghdr
 import re
 import threading
 from base64 import b64encode
+from collections.abc import Iterable
 from difflib import get_close_matches
+from urllib.parse import urljoin, urlparse
 
+from bs4 import BeautifulSoup
 from json_repair import repair_json
+
+
+def extract_fragments(html_bytes: bytes, base_url: str) -> set[str]:
+    """
+    Extracts fragments from hrefs that match base_url or base_url + #fragment.
+
+    Args:
+        html_bytes: HTML content in bytes.
+        base_url: The base URL to match against.
+
+    Returns:
+        A set of fragments (without base_url).
+    """
+    soup = BeautifulSoup(html_bytes, "html.parser")
+    base_url = base_url.rstrip("/")
+    base_parts = urlparse(base_url)
+
+    fragments = set()
+
+    for tag in soup.find_all("a", href=True):
+        raw_href = tag["href"]
+        if raw_href.startswith(("javascript:", "mailto:")):
+            continue
+
+        absolute_href = urljoin(base_url + "/", raw_href)
+        parsed = urlparse(absolute_href)
+
+        # Match scheme, netloc, and path
+        if (
+            parsed.scheme == base_parts.scheme
+            and parsed.netloc == base_parts.netloc
+            and parsed.path.rstrip("/") == base_parts.path.rstrip("/")
+            and parsed.query == ""
+            and parsed.fragment
+        ):
+            print([child.get_text().strip() for child in tag.children])
+            fragments.add(parsed.fragment)
+
+    return fragments
 
 
 def keyword_match_ratio(keywords: list[str], text: str) -> float:
@@ -13,7 +55,7 @@ def keyword_match_ratio(keywords: list[str], text: str) -> float:
     (case-insensitive substring) or fuzzily within individual words.
 
     Args:
-        keywords: List of keywords to search for.
+        keywords: list of keywords to search for.
         text:     The text to search in.
 
     Returns:
@@ -144,3 +186,40 @@ def encode_image(image: bytes) -> str:
         str: Base64 encoded image data
     """
     return b64encode(image).decode("utf-8")
+
+
+PAGE_KEY_CANDIDATES: set[str] = {
+    "page",
+    "pageno",
+    "page_no",
+    "page_number",
+    "pagenum",
+    "pagenumber",
+    "pageindex",
+    "page_index",
+    "p",
+}
+
+OFFSET_KEY_CANDIDATES: set[str] = {"offset"}
+
+
+def determine_page_and_offset_keys(keys: Iterable[str]) -> tuple[str | None, str | None]:
+    """
+    Determine page-number and offset parameter keys.
+
+    Args:
+        keys: List of query parameter names.
+
+    Returns:
+        tuple[str | None, str | None]: Page-number and offset parameter keys or None if no suitable keys are found.
+    """
+
+    page_key, offset_key = None, None
+    for k in keys:
+        kl = k.lower()
+        if kl in PAGE_KEY_CANDIDATES:
+            page_key = k
+        elif kl in OFFSET_KEY_CANDIDATES:
+            offset_key = k
+
+    return page_key, offset_key

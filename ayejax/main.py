@@ -3,6 +3,7 @@ from typing import Annotated
 from cyclopts import App, Parameter
 
 import ayejax
+from ayejax.codegen import BashCurlCode, PythonRequestsCode
 from ayejax.llm import LLMClient, LLMProvider
 
 app = App(name="ayejax", help="Get ajax call using natural language query")
@@ -40,10 +41,18 @@ def main(
     llm_client = app(tokens=tokens) if tokens else LLMClient(provider="openai", model="gpt-4o")
 
     output = ayejax.find(url, query, llm_client=llm_client)
-    for candidate in output.candidates:
-        print("===============================================")
-        print(candidate.request.as_curl_command(format="cmd"))
-        print("===============================================")
+    if not output.candidates:
+        raise ValueError("No candidates found")
+
+    request = output.candidates[0].request
+
+    bash_code = BashCurlCode.from_request(request)
+    with open("new.sh", "w") as f:
+        f.write(bash_code.render(caller_type="loop"))
+
+    python_code = PythonRequestsCode.from_request(request)
+    with open("new.py", "w") as f:
+        f.write(python_code.render(caller_type="loop"))
 
 
 if __name__ == "__main__":

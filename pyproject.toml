@@ -16,12 +16,14 @@ classifiers = [
 ]
 dependencies = [
     "anthropic>=0.50.0",
+    "beautifulsoup4>=4.13.4",
     "cyclopts>=3.19.0",
     "json-repair>=0.44.1",
     "loguru>=0.7.3",
     "openai>=1.76.0",
     "playwright>=1.51.0",
     "pydantic>=2.11.3",
+    "requests>=2.32.4",
 ]
 
 [project.urls]
