@@ -232,7 +232,7 @@ class _Finder(Logger, cls_name="Finder"):
             b.close(reason="done")
             p.stop()
 
-    def __call__(self, *, url: str, query: str, load_state_timeout: float | None = None):
+    def __call__(self, *, url: str, query: str, max_scrolls: int, load_state_timeout: float | None):
         prompt = PROMPT_TEMPLATE % query
         datetime_fmt = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         har_file_path = Path(gettempdir()) / f"{datetime_fmt}--ayejax.har"
@@ -249,9 +249,10 @@ class _Finder(Logger, cls_name="Finder"):
 
             self.logger.info("Performing initial scroll")
             self.scroll(page)  # Scroll first to fetch some ajax responses
+            max_scrolls -= 1
             self.logger.info(f"Initial scroll complete | response_count={len(self.url_to_response)}")
 
-            while len(self.url_to_score) == 0:
+            while len(self.url_to_score) == 0 and max_scrolls > 0:
                 try:
                     self.fetch_keywords(prompt, page)
                 except Exception as e:
@@ -262,6 +263,7 @@ class _Finder(Logger, cls_name="Finder"):
                     break
 
                 self.scroll(page)
+                max_scrolls -= 1
 
         har_data = read_har(har_file_path)
         har_file_path.unlink()
@@ -284,6 +286,7 @@ class _Finder(Logger, cls_name="Finder"):
 def find(
     url: str,
     query: str,
+    max_scrolls: int = 10,
     *,
     llm_client: llm.LLMClientInterface,
     browser: Browser | Literal["headless", "headed"] = "headed",
@@ -291,4 +294,4 @@ def find(
     load_state_timeout: float | None = None,
 ):
     finder = _Finder(llm_client=llm_client, browser=browser, relevance_threshold=relevance_threshold)
-    return finder(url=url, query=query, load_state_timeout=load_state_timeout)
+    return finder(url=url, query=query, max_scrolls=max_scrolls, load_state_timeout=load_state_timeout)
