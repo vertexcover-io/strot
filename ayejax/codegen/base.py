@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ayejax.request import Request
+from ayejax.har import Request
 
 
 class BaseCode(BaseModel):

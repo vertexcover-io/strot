@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from urllib.parse import quote_plus, urlsplit, urlunsplit
 
+from ayejax.har import Request
 from ayejax.helpers import bash_escape, determine_page_and_offset_keys
-from ayejax.request import Request
 
 from ..base import BaseCode
 
@@ -58,7 +58,7 @@ class BashCurlCode(BaseCode):
         if request.method.upper() != "GET":
             parts.append(f"  -X {bash_escape(request.method)}")
 
-        if (data := request._repr_post_data()) is not None:
+        if (data := request.repr_post_data()) is not None:
             parts.append(f"  --data-raw {bash_escape(data)}")
             ignored_headers.add("content-length")
 

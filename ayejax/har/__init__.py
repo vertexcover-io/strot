@@ -1,30 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 from pydantic import BaseModel, Field
-
-
-def read_har(path: str | Path) -> Data:
-    """
-    Read and parse a HAR file into a Data object.
-
-    Args:
-        path: Path to the HAR file to read
-
-    Returns:
-        Data: Parsed HAR data model
-
-    Raises:
-        FileNotFoundError: If the specified file does not exist
-    """
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"File not found: {path!r}")
-
-    return Data.model_validate_json(path.read_bytes())
 
 
 class Data(BaseModel):
@@ -94,7 +74,7 @@ class Request(BaseModel):
     """List of HTTP headers sent with the request"""
     queries: list[Pair] = Field(default_factory=list, alias="queryString")
     """List of query parameters in the URL"""
-    post_data: Optional[PostData] = Field(default=None, alias="postData")  # noqa: UP007
+    post_data: PostData | None = Field(default=None, alias="postData")
     """POST data included in the request body"""
 
     @classmethod
@@ -125,7 +105,7 @@ class Request(BaseModel):
         path = Path(path)
         path.write_text(self.model_dump_json(indent=3, exclude_none=True))
 
-    def _repr_post_data(self) -> str | None:
+    def repr_post_data(self) -> str | None:
         """Get string representation of POST data.
 
         Returns:

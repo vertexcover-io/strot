@@ -5,8 +5,11 @@ from cyclopts import App, Parameter
 import ayejax
 from ayejax.codegen import BashCurlCode, PythonRequestsCode
 from ayejax.llm import LLMClient, LLMProvider
+from ayejax.logging import FileHandlerConfig, create_logger
 
 app = App(name="ayejax", help="Get ajax call using natural language query")
+
+logger = create_logger(name="ayejax", file_handler_config=FileHandlerConfig(directory="."))
 
 
 @app.command(name="llm")
@@ -22,7 +25,7 @@ def configure_llm_client(
         provider: LLM provider
         model: LLM model
     """
-    return LLMClient(provider=provider, model=model)
+    return LLMClient(provider=provider, model=model, logger=logger)
 
 
 @app.meta.default
@@ -38,13 +41,13 @@ def main(
         url: URL to find ajax call for
         query: Natural language query
     """
-    llm_client = app(tokens=tokens) if tokens else LLMClient(provider="openai", model="gpt-4o")
+    llm_client = app(tokens=tokens) if tokens else LLMClient(provider="openai", model="gpt-4o", logger=logger)
 
-    output = ayejax.find(url, query, llm_client=llm_client)
-    if not output.candidates:
+    candidates = ayejax.find_using_natural_language(url, query, llm_client=llm_client, logger=logger)
+    if not candidates:
         raise ValueError("No candidates found")
 
-    request = output.candidates[0].request
+    request = candidates[0].request
 
     bash_code = BashCurlCode.from_request(request)
     with open("new.sh", "w") as f:

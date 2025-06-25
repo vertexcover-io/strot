@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from urllib.parse import quote_plus, urlsplit, urlunsplit
 
+from ayejax.har import Request
 from ayejax.helpers import determine_page_and_offset_keys
-from ayejax.request import Request
 
 from ..base import BaseCode
 
@@ -70,7 +70,7 @@ class PythonRequestsCode(BaseCode):
 
         # Payload
         payload_arg = ""
-        if (data := request._repr_post_data()) and data != "{}":
+        if (data := request.repr_post_data()) and data != "{}":
             try:
                 parsed = json.loads(data)
                 pretty = json.dumps(parsed, indent=4)

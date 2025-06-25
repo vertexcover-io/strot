@@ -188,7 +188,7 @@ def encode_image(image: bytes) -> str:
     return b64encode(image).decode("utf-8")
 
 
-PAGE_KEY_CANDIDATES: set[str] = {
+PAGE_KEY_CANDIDATES = {
     "page",
     "pageno",
     "page_no",
@@ -200,7 +200,7 @@ PAGE_KEY_CANDIDATES: set[str] = {
     "p",
 }
 
-OFFSET_KEY_CANDIDATES: set[str] = {"offset"}
+OFFSET_KEY_CANDIDATES = {"offset"}
 
 
 def determine_page_and_offset_keys(keys: Iterable[str]) -> tuple[str | None, str | None]:
