@@ -1,4 +1,4 @@
-import imghdr
+import io
 import re
 import threading
 from base64 import b64encode
@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from json_repair import repair_json
+from PIL import Image
 
 
 def extract_fragments(html_bytes: bytes, base_url: str) -> set[str]:
@@ -168,11 +169,14 @@ def guess_image_type(image: bytes) -> str:
     Returns:
         str: Image type (e.g. "png", "jpeg")
     """
-    img_type = imghdr.what(None, image)
-    if img_type is None:
+    try:
+        with Image.open(io.BytesIO(image)) as img:
+            img_type = img.format
+            if img_type is None:
+                raise ValueError("image type could not be guessed")
+            return img_type.lower()
+    except Exception:
         raise ValueError("image type could not be guessed")
-
-    return img_type
 
 
 def encode_image(image: bytes) -> str:
@@ -253,10 +257,7 @@ def draw_point_on_image(
     Returns:
         PIL.Image.Image: The image with the point drawn on it.
     """
-
-    import io
-
-    from PIL import Image, ImageDraw
+    from PIL import ImageDraw
 
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
 
