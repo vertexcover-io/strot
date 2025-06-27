@@ -41,13 +41,17 @@ def main(
         url: URL to find ajax call for
         query: Natural language query
     """
-    llm_client = app(tokens=tokens) if tokens else LLMClient(provider="openai", model="gpt-4o", logger=logger)
+    llm_client = (
+        app(tokens=tokens)
+        if tokens
+        else LLMClient(provider="anthropic", model="claude-3-7-sonnet-latest", logger=logger)
+    )
 
-    candidates = ayejax.find_using_natural_language(url, query, llm_client=llm_client, logger=logger)
-    if not candidates:
+    output = ayejax.find(url, query, llm_client=llm_client, logger=logger)
+    if not output.candidates:
         raise ValueError("No candidates found")
 
-    request = candidates[0].request
+    request = output.candidates[0].request
 
     bash_code = BashCurlCode.from_request(request)
     with open("new.sh", "w") as f:
@@ -56,6 +60,8 @@ def main(
     python_code = PythonRequestsCode.from_request(request)
     with open("new.py", "w") as f:
         f.write(python_code.render(caller_type="loop"))
+
+    logger.info("calculate-total-cost", cost_in_usd=sum(c.calculate_cost(3.0, 15.0) for c in output.completions))
 
 
 if __name__ == "__main__":

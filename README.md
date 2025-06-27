@@ -34,10 +34,9 @@ Get ajax call using natural language query
 ```
 
 ```bash
-export OPENAI_API_KEY=<YOUR_API_KEY>
+export ANTHROPIC_API_KEY=<YOUR_API_KEY>
 ayejax --url "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1" \
-       --query "all the listed vegetables" \
-       llm --provider "openai" --model "gpt-4o"
+       --query "all the listed vegetables"
 ```
 
 ### Library
@@ -55,8 +54,6 @@ logger = create_logger(
 )
 ```
 
-#### Find using natural language
-
 Create an LLM client of your choice
 
 > Available providers: `openai`, `anthropic`, `groq` and `open-router`
@@ -65,7 +62,7 @@ Create an LLM client of your choice
 from ayejax import llm
 
 llm_client = llm.LLMClient(
-    provider="openai", model="gpt-4o", api_key="YOUR_API_KEY", logger=logger
+    provider="anthropic", model="claude-3-7-sonnet-latest", api_key="YOUR_API_KEY", logger=logger
 )
 ```
 
@@ -82,20 +79,7 @@ output = ayejax.find_using_natural_language(
 )
 ```
 
-#### Find Shopify reviews
-
-```python
-import ayejax
-
-output = ayejax.find_shopify_reviews(
-    "https://www.vitalproteins.com/products/collagen-gummies",
-    logger=logger,
-)
-```
-
-#### Generate code
-
-Python Requests code
+Generate Python Requests code
 
 ```python
 from ayejax.codegen import PythonRequestsCode
@@ -106,7 +90,7 @@ with open("scrape-swiggy-category.py", "w") as f:
     f.write(python_code.render())
 ```
 
-Bash Curl script
+Generate Bash Curl script
 
 ```python
 from ayejax.codegen import BashCurlCode

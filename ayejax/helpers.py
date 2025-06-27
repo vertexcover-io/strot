@@ -223,3 +223,48 @@ def determine_page_and_offset_keys(keys: Iterable[str]) -> tuple[str | None, str
             offset_key = k
 
     return page_key, offset_key
+
+
+def draw_point_on_image(
+    image_bytes: bytes,
+    x: int,
+    y: int,
+    radius: int = 5,
+    color: "tuple[int, int, int] | str" = "red",
+):
+    """Draw a small circle at the given ``(x, y)`` coordinates on an image.
+
+    The function accepts raw image bytes (any format supported by Pillow), draws
+    a filled circle of the requested *radius* and *color* centred at the given
+    coordinates, and returns a ``PIL.Image.Image`` instance with the
+    modification applied.
+
+    This is useful for visualising feature/key-points returned by detection
+    algorithms or for quick debugging of coordinate systems.
+
+    Args:
+        image_bytes: Raw bytes of the image (e.g. as read from a file or HTTP response).
+        x:           X-coordinate (pixels) of the centre of the point.
+        y:           Y-coordinate (pixels) of the centre of the point.
+        radius:      Radius of the circle to draw in pixels. Defaults to ``5``.
+        color:       Fill colour for the circle. Accepts an ``(R, G, B)`` tuple
+                      or any Pillow-compatible colour string (default ``"red"``).
+
+    Returns:
+        PIL.Image.Image: The image with the point drawn on it.
+    """
+
+    import io
+
+    from PIL import Image, ImageDraw
+
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+
+    draw = ImageDraw.Draw(img)
+
+    fill_color = tuple(color) if isinstance(color, tuple) else color
+
+    bbox = (x - radius, y - radius, x + radius, y + radius)
+    draw.ellipse(bbox, fill=fill_color)
+
+    return img
