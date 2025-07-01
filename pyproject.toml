@@ -24,6 +24,8 @@ dependencies = [
     "playwright>=1.51.0",
     "pydantic>=2.11.3",
     "python-magic>=0.4.27",
+    "rapidfuzz>=3.13.0",
+    "regex>=2024.11.6",
     "requests>=2.32.4",
     "structlog>=25.4.0",
 ]
@@ -43,7 +45,7 @@ dev-dependencies = [
 ]
 
 [project.scripts]
-ayejax = "ayejax.main:app.meta"
+ayejax = "ayejax.main:app"
 
 [build-system]
 requires = ["setuptools >= 61.0"]

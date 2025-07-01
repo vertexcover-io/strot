@@ -1,13 +1,13 @@
 import re
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import Awaitable, Generator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from tempfile import gettempdir
 from typing import Callable, Literal
 from urllib.parse import urlparse
 
-from playwright.sync_api import Browser, BrowserContext, Page, Response, sync_playwright
+from playwright.async_api import Browser, BrowserContext, Page, Response, async_playwright
 
 from ayejax.har import Data
 from ayejax.logging import LoggerType
@@ -30,16 +30,16 @@ class HarBuilder:
             pattern = f"^(?!{pattern}).+"
         self.filter_pattern = re.compile(pattern, re.IGNORECASE)
 
-    @contextmanager
-    def _new_context(self, har_file: Path) -> Generator[BrowserContext, None, None]:
+    @asynccontextmanager
+    async def _new_context(self, har_file: Path) -> Generator[BrowserContext, None, None]:
         is_browser_provided = isinstance(self.browser, Browser)
         if not is_browser_provided:
-            p = sync_playwright().start()
-            b = p.chromium.launch(headless=self.browser == "headless")
+            p = await async_playwright().start()
+            b = await p.chromium.launch(headless=self.browser == "headless")
         else:
             p, b = None, self.browser
 
-        ctx = b.new_context(
+        ctx = await b.new_context(
             bypass_csp=True,
             record_har_path=har_file,
             record_har_mode="full",
@@ -47,12 +47,12 @@ class HarBuilder:
         )
 
         yield ctx
-        ctx.close(reason="done")
+        await ctx.close(reason="done")
         if not is_browser_provided:
-            b.close(reason="done")
-            p.stop()
+            await b.close(reason="done")
+            await p.stop()
 
-    def _response_handler(self, response: Response, callback: Callable[[Response], None]):
+    async def _response_handler(self, response: Response, callback: Callable[[Response], Awaitable[None]]):
         resource_type = response.request.resource_type
         if resource_type not in ("xhr", "fetch"):
             return
@@ -71,35 +71,38 @@ class HarBuilder:
         ):
             return
 
-        callback(response)
+        await callback(response)
 
-    def run(
+    async def run(
         self,
         *,
         url: str,
         wait_timeout: float | None = None,
-        on_response: Callable[[Response], None],
-        page_callback: Callable[[Page], None],
+        on_response: Callable[[Response], Awaitable[None]],
+        page_callback: Callable[[Page], Awaitable[None]],
         logger: LoggerType,
     ) -> Data:
         datetime_fmt = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         har_file = Path(gettempdir()) / f"{datetime_fmt}--ayejax.har"
 
-        with self._new_context(har_file=har_file) as browser_ctx:
+        async with self._new_context(har_file=har_file) as browser_ctx:
             logger.info("page", action="create", url=url)
-            page = browser_ctx.new_page()
+            page = await browser_ctx.new_page()
 
             try:
                 logger.info("page", action="wait", url=url)
-                page.goto(url, timeout=wait_timeout, wait_until="commit")
+                await page.goto(url, timeout=wait_timeout, wait_until="commit")
             except Exception as e:
                 if f"Timeout {wait_timeout}ms exceeded" not in str(e):
                     logger.error("page", action="wait", url=url, error=str(e))
                 raise
 
-            page.on("response", lambda r: self._response_handler(r, on_response))
+            async def handler(response: Response):
+                await self._response_handler(response, on_response)
 
-            page_callback(page)
+            page.on("response", handler)
+
+            await page_callback(page)
 
         har_data = Data.model_validate_json(har_file.read_bytes())
         har_file.unlink()

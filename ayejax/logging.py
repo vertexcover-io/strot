@@ -10,6 +10,14 @@ import structlog
 from pydantic import BaseModel
 from structlog.processors import CallsiteParameter
 
+__all__ = (
+    "setup_logging",
+    "get_logger",
+    "FileHandlerConfig",
+    "LogLevel",
+    "LoggerType",
+)
+
 LoggerType = structlog.stdlib.BoundLogger
 
 
@@ -38,64 +46,31 @@ class FileHandlerConfig(BaseModel):
     """Whether to use UTC time for the log file."""
 
 
-def create_logger(
-    name: str | None = None,
-    *,
+_level = LogLevel.INFO
+
+
+def setup_logging(
     level: LogLevel | None = None,
-    file_handler_config: FileHandlerConfig | None = None,
     overrides: dict[str, LogLevel | None] | None = None,
-    **initial_values: Any,
-) -> LoggerType:
+) -> None:
     """
-    Create a new logger instance.
+    Initialize the logger.
 
     Args:
-        name: Logger name. Defaults to the name of the file where it is called.
         level: Logging level. Defaults to INFO.
-        file_handler_config: Configuration for the file handler. Defaults to None (no file logging).
-        overrides: Logger names mapped to their logging levels. Defaults to {}. If a value is None, the logger will be disabled.
-        initial_values: Initial values to add to the logger context.
-
-    Returns:
-        LoggerType: A new logger instance.
+        overrides: Logger names mapped to their logging levels. If level value is None, the logger will be disabled.
     """
-    if name is None:
-        try:
-            frame = currentframe()
-            source = frame.f_back.f_code.co_filename
-            name = Path(source).stem
-            if name == "__init__":
-                name = Path(source).parent.stem
-        except Exception:
-            name = "unknown"
-
-    logging.getLogger(name).handlers.clear()
+    if level is not None:
+        global _level
+        _level = level
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(UnstructuredLoggingFormatter())
 
-    handlers = [console_handler]
-
-    if file_handler_config is not None:
-        target_dir = Path(file_handler_config.directory)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        file_handler = TimedRotatingFileHandler(
-            filename=target_dir / f"{name}.log",
-            when=file_handler_config.when,
-            interval=file_handler_config.interval,
-            backupCount=file_handler_config.backupCount,
-            encoding=file_handler_config.encoding,
-            delay=file_handler_config.delay,
-            utc=file_handler_config.utc,
-        )
-        file_handler.setFormatter(logging.Formatter("%(message)s"))
-        handlers.append(file_handler)
-
     logging.basicConfig(
-        level=(level or LogLevel.INFO).value,
+        level=_level.value,
         format="%(message)s",
-        handlers=handlers,
+        handlers=[console_handler],
     )
 
     structlog.configure(
@@ -121,7 +96,51 @@ def create_logger(
         else:
             lg.setLevel(log_level.value)
 
-    return structlog.get_logger(name, **initial_values)
+
+def get_logger(
+    name: str | None = None, *, file_handler_config: FileHandlerConfig | None = None, **initial_values: Any
+) -> LoggerType:
+    """
+    Get a logger instance.
+
+    Args:
+        name: Logger name. Defaults to the name of the file where it is called.
+        file_handler_config: Configuration for the file handler. Defaults to None (no file logging).
+        initial_values: Initial values to add to the logger context.
+
+    Returns:
+        LoggerType: A logger instance.
+    """
+    if name is None:
+        try:
+            frame = currentframe()
+            source = frame.f_back.f_code.co_filename
+            name = Path(source).stem
+            if name == "__init__":
+                name = Path(source).parent.stem
+        except Exception:
+            name = "unknown"
+
+    logger: LoggerType = structlog.get_logger(name, **initial_values)
+    logger.setLevel(_level.value)
+
+    if file_handler_config is not None:
+        target_dir = Path(file_handler_config.directory)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        file_handler = TimedRotatingFileHandler(
+            filename=target_dir / f"{name}.log",
+            when=file_handler_config.when,
+            interval=file_handler_config.interval,
+            backupCount=file_handler_config.backupCount,
+            encoding=file_handler_config.encoding,
+            delay=file_handler_config.delay,
+            utc=file_handler_config.utc,
+        )
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(file_handler)
+
+    return logger
 
 
 class UnstructuredLoggingFormatter(logging.Formatter):

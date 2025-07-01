@@ -23,7 +23,6 @@ Usage: ayejax COMMAND
 Get ajax call using natural language query
 
 ╭─ Commands ─────────────────────────────────────────────────────╮
-│ llm        Configure LLM client                                │
 │ --help -h  Display this message and exit.                      │
 │ --version  Display application version.                        │
 ╰────────────────────────────────────────────────────────────────╯
@@ -44,14 +43,10 @@ ayejax --url "https://www.swiggy.com/instamart/category-listing?categoryName=Fre
 Create a logger instance
 
 ```python
-from ayejax.logging import create_logger
+from ayejax.logging import setup_logging, get_logger
 
-logger = create_logger(
-    name="ayejax",
-    file_handler_config=FileHandlerConfig(
-        directory=".",
-    )
-)
+setup_logging()
+logger = get_logger("ayejax")
 ```
 
 Create an LLM client of your choice
@@ -71,7 +66,7 @@ Call the `find` function with the URL, query and LLM client
 ```python
 import ayejax
 
-output = ayejax.find_using_natural_language(
+output = await ayejax.find(
     "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1",
     "all the listed vegetables",
     llm_client=llm_client,

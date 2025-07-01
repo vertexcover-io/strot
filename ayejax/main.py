@@ -1,36 +1,20 @@
 from typing import Annotated
+from urllib.parse import urlparse
 
 from cyclopts import App, Parameter
 
 import ayejax
 from ayejax.codegen import BashCurlCode, PythonRequestsCode
-from ayejax.llm import LLMClient, LLMProvider
-from ayejax.logging import FileHandlerConfig, create_logger
+from ayejax.llm import LLMClient
+from ayejax.logging import FileHandlerConfig, get_logger, setup_logging
+
+setup_logging()
 
 app = App(name="ayejax", help="Get ajax call using natural language query")
 
-logger = create_logger(name="ayejax", file_handler_config=FileHandlerConfig(directory="."))
 
-
-@app.command(name="llm")
-def configure_llm_client(
-    *,
-    provider: Annotated[LLMProvider, Parameter(name=("-p", "--provider"))],
-    model: Annotated[str, Parameter(name=("-m", "--model"))],
-):
-    """
-    Configure LLM client
-
-    Args:
-        provider: LLM provider
-        model: LLM model
-    """
-    return LLMClient(provider=provider, model=model, logger=logger)
-
-
-@app.meta.default
-def main(
-    *tokens: Annotated[str, Parameter(show=False, allow_leading_hyphen=True)],
+@app.default
+async def main(
     url: Annotated[str, Parameter(name=("-u", "--url"))],
     query: Annotated[str, Parameter(name=("-q", "--query"))],
 ):
@@ -41,13 +25,13 @@ def main(
         url: URL to find ajax call for
         query: Natural language query
     """
-    llm_client = (
-        app(tokens=tokens)
-        if tokens
-        else LLMClient(provider="anthropic", model="claude-3-7-sonnet-latest", logger=logger)
-    )
+    parsed_url = urlparse(url)
+    logger_name = f"{parsed_url.netloc.replace('.', '_')}__{parsed_url.path.replace('/', '_')}"
 
-    output = ayejax.find(url, query, llm_client=llm_client, logger=logger)
+    logger = get_logger(logger_name, file_handler_config=FileHandlerConfig(directory="."))
+    llm_client = LLMClient(provider="anthropic", model="claude-3-7-sonnet-latest", logger=logger)
+
+    output = await ayejax.find(url, query, llm_client=llm_client, logger=logger, max_scrolls=40, max_candidates=7)
     if not output.candidates:
         raise ValueError("No candidates found")
 
@@ -65,4 +49,4 @@ def main(
 
 
 if __name__ == "__main__":
-    app.meta()
+    app()

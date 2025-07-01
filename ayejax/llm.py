@@ -235,7 +235,7 @@ class LLMClient:
             messages.append({"role": "assistant", "content": "```json"})
 
         ai_message = self.__client.beta.messages.create(
-            model=self.model, messages=messages, max_tokens=1024, betas=["computer-use-2025-01-24"]
+            model=self.model, messages=messages, max_tokens=8092, betas=["computer-use-2025-01-24"]
         )
 
         value = ai_message.content[0].text

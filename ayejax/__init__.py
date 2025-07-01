@@ -1,8 +1,10 @@
+import time
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
-from playwright.sync_api import Browser, Page
-from playwright.sync_api import Response as PWResponse
+from playwright.async_api import Browser, Page
+from playwright.async_api import Response as PWResponse
 from pydantic import BaseModel
 
 from . import har, llm
@@ -17,37 +19,47 @@ EXCLUDE_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "c
 """URL filtering keywords"""
 
 PROMPT_TEMPLATE = """\
-Your task is to extract relevant keywords from the provided screenshot of the webpage based on the given user requirements.
-The keywords must strictly adhere to user requirements and must be an exact match to those available in the screenshot.
+Your task is to precisely extract keywords from the provided screenshot of a webpage. These keywords must fully comply with the specified user requirements and should exactly match those visible in the screenshot.
 
-If no relevant keywords can be extracted:
-- set "keywords" to an empty list
-- provide an appropriate message in "error".
-- if the screenshot shows a pagination control (e.g., page numbers, “Next” or “>” arrow, dots indicating multiple pages), set "pagination_element_point" to the coordinates of the pagination control; otherwise set it to null
-- if the screenshot shows a popup, identify the coordinates of the close button and set "popup_close_button_point" to those coordinates; otherwise set it to null
+Strictly adhere to the following instructions:
+- Inspect the screenshot for keywords that meet the user-specified criteria.
+- If an overlay popup is visible in the screenshot, identify the "close" or "allow" clickable element's coordinates and assign them to "popup_element_point". If no overlay popup is present, set this to null.
+- If and only if no suitable keywords are found:
+  - set "keywords" to an empty list.
+  - Look for user requirement relevant navigation elements in the following priority order:
+    1. **Pagination controls**: Page numbers (1, 2, 3...), "Next" button, ">" arrow, "More" button, or pagination dots
+    2. **Section navigation**: Menu items, tabs, category links, or filter options that lead to sections likely containing the required keywords
+    3. **Content expansion**: "Show more", "Load more", "Expand", or accordion/dropdown toggles
+  - Select the MOST RELEVANT navigation element that would likely lead to finding the required keywords
+  - Assign the coordinates of this element to "navigation_element_point"
+  - If no relevant navigation element is found, set this to null
 
-Provide your response in valid JSON matching this schema:
+Provide your response in JSON matching this schema:
 
 {
-  "keywords":  ["<keyword1>", "<keyword2>", ...],
-  "error":     "<error message or empty string>",
-  "pagination_element_point": {"x": <x>, "y": <y>} or null,
-  "popup_close_button_point": {"x": <x>, "y": <y>} or null
+  "keywords": ["<keyword1>", "<keyword2>", ...],
+  "popup_element_point": {"x": <x>, "y": <y>} or null,
+  "navigation_element_point": {"x": <x>, "y": <y>} or null
 }
 
-User Requirements: %s"""
+User Requirement: %s"""
 
 
 class Value(BaseModel):
     keywords: list[str] = []
-    error: str = ""
-    pagination_element_point: dict[str, int] | None = None
-    popup_close_button_point: dict[str, int] | None = None
+    navigation_element_point: dict[str, float] | None = None
+    popup_element_point: dict[str, float] | None = None
+
+
+class Context(BaseModel):
+    page_screenshot: bytes
+    extracted_keywords: list[str]
+    relevance_score: float
 
 
 class Candidate(BaseModel):
     request: har.Request
-    relevance_score: float
+    context: Context
 
 
 class Output(BaseModel):
@@ -67,16 +79,16 @@ class PageScroller:
         self.logger = logger
         self.wait_timeout = wait_timeout or 5000
 
-    def _eval(self, expr: str) -> bool:
-        if not self.page.evaluate("() => window.ayejaxScriptAttached === true"):
-            _ = self.page.add_script_tag(path=Path(__file__).parent / "inject.js")
+    async def _eval(self, expr: str, args=None) -> bool:
+        if not await self.page.evaluate("() => window.ayejaxScriptAttached === true"):
+            _ = await self.page.add_script_tag(path=Path(__file__).parent / "inject.js")
 
         try:
             self.logger.info("page", action="eval", expr=expr, status="pending")
-            result = bool(self.page.evaluate(expr))
+            result = bool(await self.page.evaluate(expr, args))
 
             self.logger.info("page", action="wait", timeout=self.wait_timeout)
-            self.page.wait_for_load_state("domcontentloaded", timeout=self.wait_timeout)
+            await self.page.wait_for_load_state("domcontentloaded", timeout=self.wait_timeout)
 
             self.logger.info("page", action="eval", expr=expr, status="completed", result=result)
         except Exception as e:
@@ -89,36 +101,58 @@ class PageScroller:
 
         return result
 
-    def scroll_elements_in_view(self) -> bool:
-        return self._eval("() => scrollElements(getScrollableElements())")
+    async def scroll_elements_in_view(self) -> bool:
+        return await self._eval("() => scrollElements(getScrollableElements())")
 
-    def scroll_to_next_view(self) -> bool:
-        return self._eval("() => scrollViewport()")
+    async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
+        return await self._eval("([direction]) => scrollViewport({ direction })", [direction])
 
-    def scroll(self) -> bool:
-        status = self.scroll_elements_in_view()
-        self.logger.info("scroll", type="elements-in-view", status=status)
-        if status:
-            return True
-        status = self.scroll_to_next_view()
+    async def scroll(self) -> bool:
+        # status = await self.scroll_elements_in_view()
+        # self.logger.info("scroll", type="elements-in-view", status=status)
+        # if status:
+        #     return True
+        status = await self.scroll_to_next_view()
         self.logger.info("scroll", type="next-view", status=status)
         return status
 
 
-def click_at_point(page: Page, x: int, y: int, delay: float | None = None) -> None:
+async def click_at_point(page: Page, x: int, y: int, delay: float | None = None) -> bool:
+    """Click the element located at the given *viewport* coordinates."""
+
     viewport = page.viewport_size or {"width": 0, "height": 0}
     if not (0 <= x <= viewport["width"] and 0 <= y <= viewport["height"]):
         raise ValueError(f"Point ({x}, {y}) is outside of the current viewport {viewport}. Consider scrolling first.")
 
-    # Move cursor first (helps with some UIs that depend on hover state) then click.
-    page.mouse.move(x, y)
-    page.mouse.click(x, y)
+    click_succeeded: bool = await page.evaluate(
+        "([x, y]) => {\n"
+        "  const el = document.elementFromPoint(x, y);\n"
+        "  if (!el) return false;\n"
+        "  try {\n"
+        "    if (typeof el.click === 'function') {\n"
+        "      el.click();\n"
+        "      return true;\n"
+        "    }\n"
+        "    return false;\n"
+        "  } catch {\n"
+        "    return false;\n"
+        "  }\n"
+        "}",
+        [x, y],
+    )
+
+    # Fallback to a direct mouse click if DOM click did not succeed.
+    if not click_succeeded:
+        await page.mouse.move(x, y)
+        await page.mouse.click(x, y)
 
     delay = delay or 2.0
-    page.wait_for_timeout(int(delay * 1000))
+    await page.wait_for_timeout(int(delay * 1000))
+
+    return click_succeeded or True  # Always True if no exceptions occurred
 
 
-def find(  # noqa: C901
+async def find(  # noqa: C901
     url: str,
     query: str,
     *,
@@ -132,28 +166,37 @@ def find(  # noqa: C901
 ):
     url_to_response: dict[str, str] = {}
     keywords_list: list[list[str]] = []
-    url_to_score: dict[str, float] = {}
+    last_screenshot: bytes
+    url_to_context: dict[str, Context] = {}
 
     prompt = PROMPT_TEMPLATE % query
-    har_buidler = HarBuilder(browser=browser, filter_keywords=EXCLUDE_KEYWORDS, filter_mode="exclude")
     output = Output(candidates=[], completions=[])
+    har_buidler = HarBuilder(browser=browser, filter_keywords=EXCLUDE_KEYWORDS, filter_mode="exclude")
 
     def perform_matching() -> bool:
+        nonlocal last_screenshot
         for url, text in url_to_response.items():
-            for kwds in keywords_list:
+            for kwds in list(keywords_list):
                 score = keyword_match_ratio(kwds, text)
                 logger.info("matching", url=url, score=score)
                 if score < relevance_threshold:
                     continue
 
-                url_to_score[url] = score
+                url_to_context[url] = Context(
+                    page_screenshot=last_screenshot,
+                    extracted_keywords=kwds,
+                    relevance_score=score,
+                )
+                keywords_list.remove(kwds)
 
-        return len(url_to_score) > 0
+        return len(url_to_context) > 0
 
-    def process_current_state(page: Page) -> bool:
+    async def process_current_state(page: Page, from_navigation: bool = False, from_popup: bool = False) -> bool:
+        nonlocal last_screenshot
         logger.info("process-current-state", action="screenshot", type="png")
-        screenshot = page.screenshot(type="png")
-        llm_input = llm.LLMInput(prompt=prompt, image=screenshot)
+
+        last_screenshot = await page.screenshot(type="png")
+        llm_input = llm.LLMInput(prompt=prompt, image=last_screenshot)
         try:
             completion = llm_client.get_completion(llm_input, json=True)
             logger.info("process-current-state", action="llm-completion", status="completed", result=completion.value)
@@ -168,38 +211,43 @@ def find(  # noqa: C901
             logger.error("process-current-state", action="llm-completion", status="failed", error=str(e))
             return False
 
-        if value.error:
-            logger.error("process-current-state", status="failed", error=value.error)
-
         if value.keywords:
             logger.info("process-current-state", status="success", keywords=value.keywords)
             keywords_list.append(value.keywords)
 
-        if value.pagination_element_point:
+        if not from_navigation and value.navigation_element_point:
             logger.info(
-                "process-current-state", action="click", pagination_element_point=value.pagination_element_point
+                "process-current-state", action="click", navigation_element_point=value.navigation_element_point
             )
-            click_at_point(page, value.pagination_element_point["x"], value.pagination_element_point["y"])
+            if await click_at_point(page, value.navigation_element_point["x"], value.navigation_element_point["y"]):
+                await process_current_state(page, from_navigation=True)
 
-        if value.popup_close_button_point:
-            logger.info(
-                "process-current-state", action="click", popup_close_button_point=value.popup_close_button_point
-            )
-            click_at_point(page, value.popup_close_button_point["x"], value.popup_close_button_point["y"])
+        if not from_popup and value.popup_element_point:
+            logger.info("process-current-state", action="click", popup_element_point=value.popup_element_point)
+            if await click_at_point(page, value.popup_element_point["x"], value.popup_element_point["y"]):
+                await process_current_state(page, from_popup=True)
 
         return True
 
-    def on_response(response: PWResponse):
+    ignore_js = True
+
+    async def on_response(response: PWResponse):
         if (url := response.request.url) in url_to_response:
             return
+
+        nonlocal ignore_js
+        if ignore_js and urlparse(url).path.endswith(".js"):
+            # Some sites load the first set of data from source code instead of making AJAX call
+            return
+
         try:
             logger.info("on-response", action="capture", url=url)
-            url_to_response[url] = response.text()
+            url_to_response[url] = await response.text()
         except Exception as e:
             logger.error("on-response", action="capture", url=url, error=str(e))
 
-    def page_callback(page: Page):
-        nonlocal max_scrolls
+    async def page_callback(page: Page):
+        await page.wait_for_timeout(4000)
 
         scroller = PageScroller(
             page=page,
@@ -207,21 +255,25 @@ def find(  # noqa: C901
             wait_timeout=wait_timeout,
         )
 
-        while len(url_to_score) < max_candidates and max_scrolls > 0:
-            if not process_current_state(page):
+        nonlocal max_scrolls, ignore_js
+        ignore_js = False
+
+        while len(url_to_context) < max_candidates and max_scrolls > 0:
+            time.sleep(2.5)
+            if not (await process_current_state(page)):
                 continue
 
             if len(keywords_list) and perform_matching():
                 break
 
             logger.info("scroll", responses_before=len(url_to_response))
-            if not scroller.scroll():
+            if not (await scroller.scroll()):
                 break
 
             logger.info("scroll", responses_after=len(url_to_response))
             max_scrolls -= 1
 
-    har_data = har_buidler.run(
+    har_data = await har_buidler.run(
         url=url,
         wait_timeout=wait_timeout,
         on_response=on_response,
@@ -229,7 +281,7 @@ def find(  # noqa: C901
         logger=logger,
     )
 
-    for url, score in url_to_score.items():
+    for url, context in url_to_context.items():
         for entry in har_data.log.entries:
             if entry.request.url != url:
                 continue
@@ -237,10 +289,10 @@ def find(  # noqa: C901
             output.candidates.append(
                 Candidate(
                     request=har.Request(**entry.request.model_dump()),
-                    relevance_score=score,
+                    context=context,
                 )
             )
             break
 
-    output.candidates.sort(key=lambda c: c.relevance_score, reverse=True)
+    output.candidates.sort(key=lambda c: c.context.relevance_score, reverse=True)
     return output

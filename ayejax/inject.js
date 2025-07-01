@@ -169,7 +169,7 @@ function scrollElements(elements, options = {}) {
  * Viewport scroll.
  */
 function scrollViewport(options = {}) {
-  const { direction = "vertical" } = options;
+  const { direction = "down" } = options;
 
   const maxY =
     Math.max(
@@ -179,34 +179,23 @@ function scrollViewport(options = {}) {
       document.documentElement.offsetHeight,
     ) - window.innerHeight;
 
-  const maxX =
-    Math.max(
-      document.body.scrollWidth,
-      document.documentElement.scrollWidth,
-      document.body.offsetWidth,
-      document.documentElement.offsetWidth,
-    ) - window.innerWidth;
-
   const currentY = window.scrollY;
-  const currentX = window.scrollX;
 
-  const targetY =
-    direction === "horizontal"
-      ? currentY
-      : Math.min(currentY + window.innerHeight, maxY);
-  const targetX =
-    direction === "vertical"
-      ? currentX
-      : Math.min(currentX + window.innerWidth, maxX);
+  let targetY;
+  if (direction === "up") {
+    targetY = Math.max(currentY - window.innerHeight, 0);
+  } else {
+    // default is "down"
+    targetY = Math.min(currentY + window.innerHeight, maxY);
+  }
 
-  if (targetY === currentY && targetX === currentX)
-    return Promise.resolve(false);
+  if (targetY === currentY) return Promise.resolve(false);
 
   return _animateScroll({
     initialTop: currentY,
-    initialLeft: currentX,
+    initialLeft: window.scrollX,
     maxTop: targetY,
-    maxLeft: targetX,
+    maxLeft: window.scrollX,
     options: { direction },
     callback: ({ top, left, behavior }) =>
       window.scrollTo({ top, left, behavior }),
