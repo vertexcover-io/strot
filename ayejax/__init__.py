@@ -1,16 +1,23 @@
 import time
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse, urlsplit
 
 from playwright.async_api import Browser, Page
 from playwright.async_api import Response as PWResponse
-from pydantic import BaseModel
 
-from . import har, llm
-from .har.builder import HarBuilder
+from . import llm
 from .helpers import keyword_match_ratio
 from .logging import LoggerType
+from .page_worker import PageWorker
+from .types import (
+    Candidate,
+    CapturedRequest,
+    CapturedResponse,
+    Context,
+    LLMValue,
+    Output,
+)
 
 __all__ = ("find",)
 
@@ -43,28 +50,6 @@ Provide your response in JSON matching this schema:
 }
 
 User Requirement: %s"""
-
-
-class Value(BaseModel):
-    keywords: list[str] = []
-    navigation_element_point: dict[str, float] | None = None
-    popup_element_point: dict[str, float] | None = None
-
-
-class Context(BaseModel):
-    page_screenshot: bytes
-    extracted_keywords: list[str]
-    relevance_score: float
-
-
-class Candidate(BaseModel):
-    request: har.Request
-    context: Context
-
-
-class Output(BaseModel):
-    candidates: list[Candidate]
-    completions: list[llm.LLMCompletion]
 
 
 class PageScroller:
@@ -164,32 +149,37 @@ async def find(  # noqa: C901
     llm_client: llm.LLMClientInterface,
     logger: LoggerType,
 ):
-    url_to_response: dict[str, str] = {}
+    response_map: dict[str, CapturedResponse] = {}
     keywords_list: list[list[str]] = []
     last_screenshot: bytes
-    url_to_context: dict[str, Context] = {}
+    candidate_map: dict[str, Candidate] = {}
 
     prompt = PROMPT_TEMPLATE % query
     output = Output(candidates=[], completions=[])
-    har_buidler = HarBuilder(browser=browser, filter_keywords=EXCLUDE_KEYWORDS, filter_mode="exclude")
+    page_worker = PageWorker(browser=browser, filter_keywords=EXCLUDE_KEYWORDS, filter_mode="exclude")
 
     def perform_matching() -> bool:
         nonlocal last_screenshot
-        for url, text in url_to_response.items():
+        for url, response in response_map.items():
             for kwds in list(keywords_list):
-                score = keyword_match_ratio(kwds, text)
+                score = keyword_match_ratio(kwds, response.value)
                 logger.info("matching", url=url, score=score)
-                if score < relevance_threshold:
+                if score < relevance_threshold or (
+                    url in candidate_map and candidate_map[url].context.relevance_score > score
+                ):
                     continue
 
-                url_to_context[url] = Context(
-                    page_screenshot=last_screenshot,
-                    extracted_keywords=kwds,
-                    relevance_score=score,
+                candidate_map[url] = Candidate(
+                    request=response.request,
+                    context=Context(
+                        page_screenshot=last_screenshot,
+                        extracted_keywords=kwds,
+                        relevance_score=score,
+                    ),
                 )
                 keywords_list.remove(kwds)
 
-        return len(url_to_context) > 0
+        return len(candidate_map) > 0
 
     async def process_current_state(page: Page, from_navigation: bool = False, from_popup: bool = False) -> bool:
         nonlocal last_screenshot
@@ -206,7 +196,7 @@ async def find(  # noqa: C901
             return False
 
         try:
-            value = Value.model_validate_json(completion.value)
+            value = LLMValue.model_validate_json(completion.value)
         except Exception as e:
             logger.error("process-current-state", action="llm-completion", status="failed", error=str(e))
             return False
@@ -232,7 +222,7 @@ async def find(  # noqa: C901
     ignore_js = True
 
     async def on_response(response: PWResponse):
-        if (url := response.request.url) in url_to_response:
+        if (url := response.request.url) in response_map:
             return
 
         nonlocal ignore_js
@@ -242,7 +232,17 @@ async def find(  # noqa: C901
 
         try:
             logger.info("on-response", action="capture", url=url)
-            url_to_response[url] = await response.text()
+            split = urlsplit(url)
+            response_map[url] = CapturedResponse(
+                value=await response.text(),
+                request=CapturedRequest(
+                    method=response.request.method,
+                    url=f"{split.scheme}://{split.netloc}{split.path}",
+                    queries=dict(parse_qsl(split.query)),
+                    headers=await response.request.all_headers(),
+                    post_data=response.request.post_data_json,
+                ),
+            )
         except Exception as e:
             logger.error("on-response", action="capture", url=url, error=str(e))
 
@@ -258,7 +258,7 @@ async def find(  # noqa: C901
         nonlocal max_scrolls, ignore_js
         ignore_js = False
 
-        while len(url_to_context) < max_candidates and max_scrolls > 0:
+        while len(candidate_map) < max_candidates and max_scrolls > 0:
             time.sleep(2.5)
             if not (await process_current_state(page)):
                 continue
@@ -266,14 +266,14 @@ async def find(  # noqa: C901
             if len(keywords_list) and perform_matching():
                 break
 
-            logger.info("scroll", responses_before=len(url_to_response))
+            logger.info("scroll", responses_before=len(response_map))
             if not (await scroller.scroll()):
                 break
 
-            logger.info("scroll", responses_after=len(url_to_response))
+            logger.info("scroll", responses_after=len(response_map))
             max_scrolls -= 1
 
-    har_data = await har_buidler.run(
+    await page_worker.run(
         url=url,
         wait_timeout=wait_timeout,
         on_response=on_response,
@@ -281,18 +281,5 @@ async def find(  # noqa: C901
         logger=logger,
     )
 
-    for url, context in url_to_context.items():
-        for entry in har_data.log.entries:
-            if entry.request.url != url:
-                continue
-
-            output.candidates.append(
-                Candidate(
-                    request=har.Request(**entry.request.model_dump()),
-                    context=context,
-                )
-            )
-            break
-
-    output.candidates.sort(key=lambda c: c.context.relevance_score, reverse=True)
+    output.candidates = sorted(candidate_map.values(), key=lambda c: c.context.relevance_score, reverse=True)
     return output

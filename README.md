@@ -34,8 +34,7 @@ Get ajax call using natural language query
 
 ```bash
 export ANTHROPIC_API_KEY=<YOUR_API_KEY>
-ayejax --url "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1" \
-       --query "all the listed vegetables"
+ayejax --url "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288" --query "all the user reviews for the product"
 ```
 
 ### Library
@@ -67,31 +66,24 @@ Call the `find` function with the URL, query and LLM client
 import ayejax
 
 output = await ayejax.find(
-    "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1",
-    "all the listed vegetables",
+    "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288",
+    (
+        "All the user reviews for the product. "
+        "Ignore the summary of the reviews. "
+        "The reviews are typically available as a list of reviews towards the bottom of the page"
+    ),
     llm_client=llm_client,
     logger=logger,
 )
 ```
 
-Generate Python Requests code
+Generate Python code
 
 ```python
-from ayejax.codegen import PythonRequestsCode
+from ayejax.codegen import PythonCode
 
 request = output.candidates[0].request
-python_code = PythonRequestsCode.from_request(request)
-with open("scrape-swiggy-category.py", "w") as f:
-    f.write(python_code.render())
-```
-
-Generate Bash Curl script
-
-```python
-from ayejax.codegen import BashCurlCode
-
-request = output.candidates[0].request
-bash_code = BashCurlCode.from_request(request)
-with open("scrape-swiggy-category.sh", "w") as f:
-    f.write(bash_code.render())
+python_code = PythonCode.from_request(request, template="httpx") # Available templates: httpx, requests
+with open("scrape-solawave-eye-mask-reviews.py", "w") as f:
+    f.write(python_code.render(caller_type="loop"))
 ```

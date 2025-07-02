@@ -1,19 +1,20 @@
-import re
 from collections.abc import Awaitable, Generator
 from contextlib import asynccontextmanager
-from datetime import datetime
-from pathlib import Path
-from tempfile import gettempdir
 from typing import Callable, Literal
 from urllib.parse import urlparse
 
-from playwright.async_api import Browser, BrowserContext, Page, Response, async_playwright
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Response,
+    async_playwright,
+)
 
-from ayejax.har import Data
 from ayejax.logging import LoggerType
 
 
-class HarBuilder:
+class PageWorker:
     def __init__(
         self,
         *,
@@ -25,13 +26,8 @@ class HarBuilder:
         self.filter_keywords = filter_keywords
         self.filter_mode = filter_mode
 
-        pattern = rf"https?:\/\/[^?]*\b(?:{'|'.join(map(re.escape, filter_keywords))})\b"
-        if filter_mode == "exclude":
-            pattern = f"^(?!{pattern}).+"
-        self.filter_pattern = re.compile(pattern, re.IGNORECASE)
-
     @asynccontextmanager
-    async def _new_context(self, har_file: Path) -> Generator[BrowserContext, None, None]:
+    async def _new_context(self) -> Generator[BrowserContext, None, None]:
         is_browser_provided = isinstance(self.browser, Browser)
         if not is_browser_provided:
             p = await async_playwright().start()
@@ -39,12 +35,7 @@ class HarBuilder:
         else:
             p, b = None, self.browser
 
-        ctx = await b.new_context(
-            bypass_csp=True,
-            record_har_path=har_file,
-            record_har_mode="full",
-            record_har_url_filter=self.filter_pattern,
-        )
+        ctx = await b.new_context(bypass_csp=True)
 
         yield ctx
         await ctx.close(reason="done")
@@ -52,7 +43,7 @@ class HarBuilder:
             await b.close(reason="done")
             await p.stop()
 
-    async def _response_handler(self, response: Response, callback: Callable[[Response], Awaitable[None]]):
+    async def _response_handler(self, response: Response, callback: Callable[[Response], Awaitable[None]]) -> None:
         resource_type = response.request.resource_type
         if resource_type not in ("xhr", "fetch"):
             return
@@ -81,11 +72,8 @@ class HarBuilder:
         on_response: Callable[[Response], Awaitable[None]],
         page_callback: Callable[[Page], Awaitable[None]],
         logger: LoggerType,
-    ) -> Data:
-        datetime_fmt = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        har_file = Path(gettempdir()) / f"{datetime_fmt}--ayejax.har"
-
-        async with self._new_context(har_file=har_file) as browser_ctx:
+    ) -> None:
+        async with self._new_context() as browser_ctx:
             logger.info("page", action="create", url=url)
             page = await browser_ctx.new_page()
 
@@ -103,8 +91,3 @@ class HarBuilder:
             page.on("response", handler)
 
             await page_callback(page)
-
-        har_data = Data.model_validate_json(har_file.read_bytes())
-        har_file.unlink()
-
-        return har_data

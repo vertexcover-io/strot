@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from cyclopts import App, Parameter
 
 import ayejax
-from ayejax.codegen import BashCurlCode, PythonRequestsCode
+from ayejax.codegen import PythonCode
 from ayejax.llm import LLMClient
 from ayejax.logging import FileHandlerConfig, get_logger, setup_logging
 
@@ -26,9 +26,9 @@ async def main(
         query: Natural language query
     """
     parsed_url = urlparse(url)
-    logger_name = f"{parsed_url.netloc.replace('.', '_')}__{parsed_url.path.replace('/', '_')}"
+    filename = f"{parsed_url.netloc.replace('.', '_')}__{parsed_url.path.replace('/', '_')}"
 
-    logger = get_logger(logger_name, file_handler_config=FileHandlerConfig(directory="."))
+    logger = get_logger(filename, file_handler_config=FileHandlerConfig(directory="."))
     llm_client = LLMClient(provider="anthropic", model="claude-3-7-sonnet-latest", logger=logger)
 
     output = await ayejax.find(url, query, llm_client=llm_client, logger=logger, max_scrolls=40, max_candidates=7)
@@ -37,12 +37,8 @@ async def main(
 
     request = output.candidates[0].request
 
-    bash_code = BashCurlCode.from_request(request)
-    with open("new.sh", "w") as f:
-        f.write(bash_code.render(caller_type="loop"))
-
-    python_code = PythonRequestsCode.from_request(request)
-    with open("new.py", "w") as f:
+    python_code = PythonCode.from_request(request, template="httpx")
+    with open(f"{filename}.py", "w") as f:
         f.write(python_code.render(caller_type="loop"))
 
     logger.info("calculate-total-cost", cost_in_usd=sum(c.calculate_cost(3.0, 15.0) for c in output.completions))

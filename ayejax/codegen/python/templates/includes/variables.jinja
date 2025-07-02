@@ -1,0 +1,21 @@
+    method = {{ method | repr }}
+    url = {{ url | repr }}
+    headers = {
+    {%- for k, v in headers.items() %}
+        {{ k | repr }}: {{ v | repr }},
+    {%- endfor %}
+    }
+    params = {
+    {%- for key, value in params.items() %}
+        {{ key | repr }}: {{ value | repr }},
+    {%- endfor %}
+    }
+{%- if data is mapping %}
+    data = {
+    {%- for k, v in data.items() %}
+        {{ k | repr }}: {{ v | repr }},
+    {%- endfor %}
+    }
+{%- else %}
+    data = {{ data | repr }}
+{%- endif %}

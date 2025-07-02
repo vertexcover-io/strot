@@ -3,7 +3,6 @@ import re
 import threading
 import unicodedata
 from base64 import b64encode
-from collections.abc import Iterable
 
 import regex
 from json_repair import repair_json
@@ -62,53 +61,6 @@ def keyword_match_ratio(keywords: list[str], text: str) -> float:
     return match_count / len(keywords) if keywords else 0.0
 
 
-def bash_escape(s: str) -> str:
-    """
-    Escape a string for use in bash shell using the Chrome DevTools approach.
-
-    Args:
-        s: String to escape
-    """
-
-    def escape_character(char):
-        code = ord(char)
-        hex_string = format(code, "04x")  # Zero pad to four digits
-        return f"\\u{hex_string}"
-
-    # Test for characters that need ANSI-C quoting
-    if re.search(r"[\0-\x1F\x7F-\x9F!]|\'", s):
-        # Use ANSI-C quoting syntax
-        result = "$'" + (s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r"))
-
-        # Replace control characters and other special chars with \uXXXX
-        result = re.sub(r"[\0-\x1F\x7F-\x9F!]", lambda m: escape_character(m.group(0)), result)
-        return result + "'"
-
-    # Use simple single quote syntax
-    return "'" + s + "'"
-
-
-def cmd_escape(s: str) -> str:
-    """
-    Escape a string for use in Windows Command Prompt.
-
-    Args:
-        s: String to escape
-    """
-    # prefix & suffix with ^"
-    # 1) backslashes
-    s = s.replace("\\", "\\\\")
-    # 2) quotes
-    s = s.replace('"', '\\"')
-    # 3) other special chars
-    s = re.sub(r"[^A-Za-z0-9\s_\-:=+~'/\.,\?\;\(\)\*`]", lambda m: "^" + m.group(0), s)
-    # 4) percent signs before alnum or underscore
-    s = re.sub(r"%(?=[A-Za-z0-9_])", "%^", s)
-    # 5) newlines → ^\n\n
-    s = re.sub(r"\r?\n", "^\n\n", s)
-    return '^"' + s + '^"'
-
-
 def extract_json(s: str) -> str:
     """
     Extracts and repairs JSON value from given string.
@@ -154,43 +106,6 @@ def encode_image(image: bytes) -> str:
         str: Base64 encoded image data
     """
     return b64encode(image).decode("utf-8")
-
-
-PAGE_KEY_CANDIDATES = {
-    "page",
-    "pageno",
-    "page_no",
-    "page_number",
-    "pagenum",
-    "pagenumber",
-    "pageindex",
-    "page_index",
-    "p",
-}
-
-OFFSET_KEY_CANDIDATES = {"offset"}
-
-
-def determine_page_and_offset_keys(keys: Iterable[str]) -> tuple[str | None, str | None]:
-    """
-    Determine page-number and offset parameter keys.
-
-    Args:
-        keys: List of query parameter names.
-
-    Returns:
-        tuple[str | None, str | None]: Page-number and offset parameter keys or None if no suitable keys are found.
-    """
-
-    page_key, offset_key = None, None
-    for k in keys:
-        kl = k.lower()
-        if kl in PAGE_KEY_CANDIDATES:
-            page_key = k
-        elif kl in OFFSET_KEY_CANDIDATES:
-            offset_key = k
-
-    return page_key, offset_key
 
 
 def draw_point_on_image(
