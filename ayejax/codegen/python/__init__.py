@@ -24,9 +24,8 @@ HEADERS_TO_IGNORE = {
 
 
 class PythonCode(BaseCode):
-    jinja_env: ClassVar[Environment] = Environment(
+    jinja_env: ClassVar[Environment] = Environment(  # noqa: S701
         loader=FileSystemLoader(Path(__file__).parent / "templates"),
-        autoescape=False,
     )
     jinja_env.filters["repr"] = lambda v: repr(v)
 
@@ -65,7 +64,7 @@ class PythonCode(BaseCode):
 
         loop_lines = [
             "request_number = 1",
-            "while True:",
+            "while request_number <= 10:",
             "    try:",
             "        print(f'Fetching request {request_number}...')",
             "        response = make_request(request_number)",
