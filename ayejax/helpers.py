@@ -6,7 +6,7 @@ from base64 import b64encode
 
 import regex
 from json_repair import repair_json
-from PIL import Image
+from PIL import Image, ImageDraw
 from rapidfuzz import fuzz
 
 
@@ -136,8 +136,6 @@ def draw_point_on_image(
     Returns:
         PIL.Image.Image: The image with the point drawn on it.
     """
-    from PIL import ImageDraw
-
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
 
     draw = ImageDraw.Draw(img)
