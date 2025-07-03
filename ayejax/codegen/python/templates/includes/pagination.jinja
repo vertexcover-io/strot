@@ -1,0 +1,10 @@
+{%- if pagination_strategy is defined and map_key is defined %}
+    {%- if pagination_strategy.__class__.__name__ == 'PageOnlyStrategy' %}
+    {{ map_key }}[{{ pagination_strategy.page_key | repr }}] = request_number
+    {%- elif pagination_strategy.__class__.__name__ == 'PageOffsetStrategy' %}
+    {{ map_key }}[{{ pagination_strategy.page_key | repr }}] = request_number
+    {{ map_key }}[{{ pagination_strategy.offset_key | repr }}] = {{ pagination_strategy.base_offset }} * request_number
+    {%- elif pagination_strategy.__class__.__name__ == 'LimitOffsetStrategy' %}
+    {{ map_key }}[{{ pagination_strategy.offset_key | repr }}] = int({{ map_key }}[{{ pagination_strategy.limit_key | repr }}]) * request_number
+    {%- endif %}
+{%- endif %}

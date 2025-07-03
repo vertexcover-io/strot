@@ -1,52 +1,172 @@
-from __future__ import annotations
+import json
+import logging
+from enum import Enum
+from inspect import currentframe
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
+from typing import Any
 
-import sys
+import structlog
+from pydantic import BaseModel
+from structlog.processors import CallsiteParameter
 
-from loguru import logger
-from loguru._logger import Logger as LoguruLogger
-
-__all__ = ("Logger",)
-
-
-logger.remove(0)
-
-DEFAULT_LOGGER_FORMAT = (
-    "<green>{time:YYYY-MM-DD HH:mm:ss}</green> <bg #0f0707>[{extra[class_name]}]</bg #0f0707> <level>{message}</level>"
+__all__ = (
+    "setup_logging",
+    "get_logger",
+    "FileHandlerConfig",
+    "LogLevel",
+    "LoggerType",
 )
 
+LoggerType = structlog.stdlib.BoundLogger
 
-class Logger:
+
+class LogLevel(Enum):
+    DEBUG = logging.DEBUG
+    INFO = logging.INFO
+    WARNING = logging.WARNING
+    ERROR = logging.ERROR
+    CRITICAL = logging.CRITICAL
+
+
+class FileHandlerConfig(BaseModel):
+    directory: str | Path
+    """Directory to store the log file."""
+    when: str = "midnight"
+    """When to rotate the log file."""
+    interval: int = 1
+    """Interval between rotations."""
+    backupCount: int = 0
+    """Number of backup files to keep."""
+    encoding: str | None = None
+    """Encoding to use for the log file."""
+    delay: bool = False
+    """Delay the creation of the log file."""
+    utc: bool = False
+    """Whether to use UTC time for the log file."""
+
+
+_level = LogLevel.INFO
+
+
+def setup_logging(
+    level: LogLevel | None = None,
+    overrides: dict[str, LogLevel | None] | None = None,
+) -> None:
     """
-    Logger class that can be inherited for class based logging.
+    Initialize the logger.
 
-    Examples:
-
-        >>> class ClassName(Logger, format="<level>{message}</level>"):
-        ...     def __init__(self):
-        ...         self.logger.info("Class initialized")
-        ...
-        ...     @classmethod
-        ...     def cls_method(cls):
-        ...         cls.logger.info("Class method called")
-        ...
-        >>> ClassName()
-        >>> ClassName.cls_method()
-        >>> ClassName.logger.info("Hello Logger")
+    Args:
+        level: Logging level. Defaults to INFO.
+        overrides: Logger names mapped to their logging levels. If level value is None, the logger will be disabled.
     """
+    if level is not None:
+        global _level
+        _level = level
 
-    logger: LoguruLogger
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(UnstructuredLoggingFormatter())
 
-    @classmethod
-    def __init_subclass__(cls, *, format: str | None = None, cls_name: str | None = None):
-        """
-        Args:
-            format: Logging format to use.
-            cls_name: Custom name for the class.
-        """
-        cls_name = cls_name or cls.__name__
-        logger.add(
-            sys.stdout,
-            format=format or DEFAULT_LOGGER_FORMAT,
-            filter=lambda record: record["extra"].get("class_name") == cls_name,
+    logging.basicConfig(
+        level=_level.value,
+        format="%(message)s",
+        handlers=[console_handler],
+    )
+
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.format_exc_info,
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.CallsiteParameterAdder(parameters=[CallsiteParameter.FUNC_NAME]),
+            structlog.stdlib.filter_by_level,
+            structlog.processors.JSONRenderer(),
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    for logger_name, log_level in (overrides or {}).items():
+        lg = logging.getLogger(logger_name)
+        if log_level is None:
+            lg.disabled = True
+        else:
+            lg.setLevel(log_level.value)
+
+
+def get_logger(
+    name: str | None = None, *, file_handler_config: FileHandlerConfig | None = None, **initial_values: Any
+) -> LoggerType:
+    """
+    Get a logger instance.
+
+    Args:
+        name: Logger name. Defaults to the name of the file where it is called.
+        file_handler_config: Configuration for the file handler. Defaults to None (no file logging).
+        initial_values: Initial values to add to the logger context.
+
+    Returns:
+        LoggerType: A logger instance.
+    """
+    if name is None:
+        try:
+            frame = currentframe()
+            source = frame.f_back.f_code.co_filename
+            name = Path(source).stem
+            if name == "__init__":
+                name = Path(source).parent.stem
+        except Exception:
+            name = "unknown"
+
+    logger: LoggerType = structlog.get_logger(name, **initial_values)
+    logger.setLevel(_level.value)
+
+    if file_handler_config is not None:
+        target_dir = Path(file_handler_config.directory)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        file_handler = TimedRotatingFileHandler(
+            filename=target_dir / f"{name}.log",
+            when=file_handler_config.when,
+            interval=file_handler_config.interval,
+            backupCount=file_handler_config.backupCount,
+            encoding=file_handler_config.encoding,
+            delay=file_handler_config.delay,
+            utc=file_handler_config.utc,
         )
-        cls.logger = logger.bind(class_name=cls_name).opt(colors=True)  # type: ignore[assignment]
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(file_handler)
+
+    return logger
+
+
+class UnstructuredLoggingFormatter(logging.Formatter):
+    def format(self, record):
+        try:
+            data = json.loads(record.getMessage())
+        except json.JSONDecodeError:
+            data = {"message": record.getMessage()}
+
+        message_parts = [data.pop("level", record.levelname).upper(), f"event={data.pop('event', 'unknown')!r}"]
+        for k, v in data.items():
+            if v is None:
+                continue
+            if k in ("func_name", "msg", "message", "timestamp"):
+                message_parts.append(v)
+            elif k in ("exception", "error"):
+                if isinstance(v, Exception):
+                    message_parts.append(f"{v.__class__.__name__}: {v!s}")
+                else:
+                    message_parts.append(v)
+            elif isinstance(v, float):
+                message_parts.append(f"{k}={v:.2f}")
+            else:
+                message_parts.append(f"{k}={v!r}")
+
+        if record.exc_info:
+            message_parts.append(self.formatException(record.exc_info))
+
+        return " | ".join(message_parts)

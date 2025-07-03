@@ -23,7 +23,6 @@ Usage: ayejax COMMAND
 Get ajax call using natural language query
 
 ╭─ Commands ─────────────────────────────────────────────────────╮
-│ llm        Configure LLM client                                │
 │ --help -h  Display this message and exit.                      │
 │ --version  Display application version.                        │
 ╰────────────────────────────────────────────────────────────────╯
@@ -34,13 +33,20 @@ Get ajax call using natural language query
 ```
 
 ```bash
-export OPENAI_API_KEY=<YOUR_API_KEY>
-ayejax --url "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1" \
-       --query "all the listed vegetables" \
-       llm --provider "openai" --model "gpt-4o"
+export ANTHROPIC_API_KEY=<YOUR_API_KEY>
+ayejax --url "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288" --query "all the user reviews for the product"
 ```
 
 ### Library
+
+Create a logger instance
+
+```python
+from ayejax.logging import setup_logging, get_logger
+
+setup_logging()
+logger = get_logger("ayejax")
+```
 
 Create an LLM client of your choice
 
@@ -50,30 +56,34 @@ Create an LLM client of your choice
 from ayejax import llm
 
 llm_client = llm.LLMClient(
-    provider="openai", model="gpt-4o", api_key="YOUR_API_KEY"
+    provider="anthropic", model="claude-3-7-sonnet-latest", api_key="YOUR_API_KEY", logger=logger
 )
 ```
 
 Call the `find` function with the URL, query and LLM client
 
 ```python
-import os
-
 import ayejax
-from ayejax.codegen import BashCurlCode
 
-output = ayejax.find(
-    "https://www.swiggy.com/instamart/category-listing?categoryName=Fresh+Vegetables&custom_back=true&taxonomyType=Speciality+taxonomy+1",
-    "all the listed vegetables",
-    llm_client=ayejax.llm.LLMClient(
-        provider="openai", model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY")
+output = await ayejax.find(
+    "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288",
+    (
+        "All the user reviews for the product. "
+        "Ignore the summary of the reviews. "
+        "The reviews are typically available as a list of reviews towards the bottom of the page"
     ),
+    llm_client=llm_client,
+    logger=logger,
 )
-if output.candidates:
-    request = output.candidates[0].request
-    bash_code = BashCurlCode.from_request(request)
-    with open("scrape-swiggy-category.sh", "w") as f:
-        f.write(bash_code.render())
 ```
 
-https://github.com/user-attachments/assets/790f57fc-a9a7-4991-b2fb-489bf47d8509
+Generate Python code
+
+```python
+from ayejax.codegen import PythonCode
+
+request = output.candidates[0].request
+python_code = PythonCode.from_request(request, template="httpx") # Available templates: httpx, requests
+with open("scrape-solawave-eye-mask-reviews.py", "w") as f:
+    f.write(python_code.render(caller_type="loop"))
+```

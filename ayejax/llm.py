@@ -8,7 +8,7 @@ import openai
 from pydantic import BaseModel, PrivateAttr, model_validator
 
 from .helpers import encode_image, extract_json, guess_image_type
-from .logging import Logger
+from .logging import LoggerType
 
 LLMProvider = Literal["openai", "anthropic", "groq", "open-router"]
 
@@ -94,18 +94,20 @@ class LLMClientInterface(Protocol):
         """
 
 
-class LLMClient(Logger):
+class LLMClient:
     def __init__(
         self,
         *,
         provider: LLMProvider,
         model: str,
         api_key: str | None = None,
+        logger: LoggerType,
     ):
         self.__provider = provider.lower()
         self.__model = model
+        self.logger = logger
 
-        self.logger.info(f"Initializing LLM client | provider={self.__provider!r} | model={self.__model!r}")
+        self.logger.info("init-llm", provider=provider, model=model)
 
         client: anthropic.Client | openai.Client
         match self.__provider:
@@ -145,17 +147,13 @@ class LLMClient(Logger):
         Returns:
             LLMCompletion: LLM completion.
         """
-        self.logger.info(f"Requesting LLM completion | json={json}")
+        self.logger.info("llm-completion", json=json)
         if self.provider == "anthropic":
             completion = self.__request_anthropic_client(input, json=json)
         else:
             completion = self.__request_openai_client(input, json=json)
 
-        self.logger.info(
-            "Got LLM completion | "
-            f"input_tokens={completion.input_tokens} | "
-            f"output_tokens={completion.output_tokens}"
-        )
+        self.logger.info("llm-completion", input_tokens=completion.input_tokens, output_tokens=completion.output_tokens)
         return completion
 
     def __request_openai_client(self, input: LLMInput, json: bool) -> LLMCompletion:
@@ -236,7 +234,9 @@ class LLMClient(Logger):
         if json:
             messages.append({"role": "assistant", "content": "```json"})
 
-        ai_message = self.__client.beta.messages.create(model=self.model, messages=messages, max_tokens=1024)
+        ai_message = self.__client.beta.messages.create(
+            model=self.model, messages=messages, max_tokens=8092, betas=["computer-use-2025-01-24"]
+        )
 
         value = ai_message.content[0].text
         return LLMCompletion(
