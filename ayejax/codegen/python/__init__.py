@@ -26,7 +26,7 @@ HEADERS_TO_IGNORE = {
 class PythonCode(BaseCode):
     jinja_env: ClassVar[Environment] = Environment(
         loader=FileSystemLoader(Path(__file__).parent / "templates"),
-        autoescape=True,
+        autoescape=False,
     )
     jinja_env.filters["repr"] = lambda v: repr(v)
 

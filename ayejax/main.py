@@ -1,3 +1,4 @@
+import re
 from typing import Annotated
 from urllib.parse import urlparse
 
@@ -13,6 +14,30 @@ setup_logging()
 app = App(name="ayejax", help="Get ajax call using natural language query")
 
 
+def normalize_filename(url: str) -> str:
+    """
+    Normalize URL to safe filename
+    
+    Args:
+        url: URL to normalize
+        
+    Returns:
+        Safe filename string
+    """
+    parsed_url = urlparse(url)
+    clean_netloc = parsed_url.netloc.replace('.', '_')
+    clean_path = parsed_url.path.replace('/', '_')
+    
+    # Remove special characters, keep only alphanumeric, underscore, hyphen
+    clean_netloc = re.sub(r'[^\w\-]', '', clean_netloc)
+    clean_path = re.sub(r'[^\w\-]', '', clean_path)
+    
+    # Remove trailing underscores
+    clean_path = clean_path.strip('_')
+    
+    return f"{clean_netloc}__{clean_path}" if clean_path else clean_netloc
+
+
 @app.default
 async def main(
     url: Annotated[str, Parameter(name=("-u", "--url"))],
@@ -25,8 +50,7 @@ async def main(
         url: URL to find ajax call for
         query: Natural language query
     """
-    parsed_url = urlparse(url)
-    filename = f"{parsed_url.netloc.replace('.', '_')}__{parsed_url.path.replace('/', '_')}"
+    filename = normalize_filename(url)
 
     logger = get_logger(filename, file_handler_config=FileHandlerConfig(directory="."))
     llm_client = LLMClient(provider="anthropic", model="claude-3-7-sonnet-latest", logger=logger)
