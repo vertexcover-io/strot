@@ -1,0 +1,21 @@
+{%- if output.pagination_strategy is defined and output.pagination_strategy.__class__.__name__ == 'NextCursorInfo' %}
+    cursor = {{ output.pagination_strategy.first_cursor | repr }}
+    while cursor:
+        try:
+            print(f'Fetching request {request_number}...')
+            response_text = make_request(cursor)
+            cursor = extract_cursor(response_text)
+        except Exception as e:
+            print(f'Finished pagination or encountered an error: {e}')
+            break
+{%- else %}
+    request_number = 1
+    while request_number <= 10:
+        try:
+            print(f'Fetching request {request_number}...')
+            response = make_request(request_number)
+            request_number += 1
+        except Exception as e:
+            print(f'Finished pagination or encountered an error: {e}')
+            break
+{%- endif %}

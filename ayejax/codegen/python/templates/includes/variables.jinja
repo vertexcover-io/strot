@@ -1,21 +1,21 @@
-    method = {{ method | repr }}
-    url = {{ url | repr }}
+    method = {{ output.request.method | repr }}
+    url = {{ output.request.url | repr }}
     headers = {
-    {%- for k, v in headers.items() %}
+    {%- for k, v in output.request.headers.items() %}
         {{ k | repr }}: {{ v | repr }},
     {%- endfor %}
     }
     params = {
-    {%- for key, value in params.items() %}
+    {%- for key, value in output.request.queries.items() %}
         {{ key | repr }}: {{ value | repr }},
     {%- endfor %}
     }
-{%- if data is mapping %}
+{%- if output.request.post_data is mapping %}
     data = {
-    {%- for k, v in data.items() %}
+    {%- for k, v in output.request.post_data.items() %}
         {{ k | repr }}: {{ v | repr }},
     {%- endfor %}
     }
 {%- else %}
-    data = {{ data | repr }}
+    data = {{ output.request.post_data | repr }}
 {%- endif %}

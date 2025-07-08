@@ -1,10 +1,14 @@
-{%- if pagination_strategy is defined and map_key is defined %}
-    {%- if pagination_strategy.__class__.__name__ == 'PageOnlyStrategy' %}
-    {{ map_key }}[{{ pagination_strategy.page_key | repr }}] = request_number
-    {%- elif pagination_strategy.__class__.__name__ == 'PageOffsetStrategy' %}
-    {{ map_key }}[{{ pagination_strategy.page_key | repr }}] = request_number
-    {{ map_key }}[{{ pagination_strategy.offset_key | repr }}] = {{ pagination_strategy.base_offset }} * request_number
-    {%- elif pagination_strategy.__class__.__name__ == 'LimitOffsetStrategy' %}
-    {{ map_key }}[{{ pagination_strategy.offset_key | repr }}] = int({{ map_key }}[{{ pagination_strategy.limit_key | repr }}]) * request_number
+{%- if output.pagination_strategy is defined %}
+    {%- set map_key = "data" if output.request.method.lower() == "post" and output.request.post_data is mapping else "params" %}
+    {%- if output.pagination_strategy.__class__.__name__ == 'PageOnlyInfo' %}
+    {{ map_key }}[{{ output.pagination_strategy.page_key | repr }}] = request_number
+    {%- elif output.pagination_strategy.__class__.__name__ == 'PageOffsetInfo' %}
+    {{ map_key }}[{{ output.pagination_strategy.page_key | repr }}] = request_number
+    {{ map_key }}[{{ output.pagination_strategy.offset_key | repr }}] = {{ output.pagination_strategy.base_offset }} * request_number
+    {%- elif output.pagination_strategy.__class__.__name__ == 'LimitOffsetInfo' %}
+    {{ map_key }}[{{ output.pagination_strategy.offset_key | repr }}] = int({{ map_key }}[{{ output.pagination_strategy.limit_key | repr }}]) * request_number
+    {%- elif output.pagination_strategy.__class__.__name__ == 'NextCursorInfo' %}
+    if cursor:
+        {{ map_key }}[{{ output.pagination_strategy.cursor_key | repr }}] = cursor
     {%- endif %}
 {%- endif %}

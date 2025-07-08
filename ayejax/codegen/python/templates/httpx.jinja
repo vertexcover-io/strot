@@ -1,6 +1,5 @@
 import httpx
-
-def make_request(request_number: int = 1):
+{% include "includes/prefix.jinja" %}
 {% include "includes/variables.jinja" %}
 {% include "includes/pagination.jinja" %}
 
@@ -9,3 +8,5 @@ def make_request(request_number: int = 1):
         response.raise_for_status()
         print(response.text)
         return response.text
+
+{% include "includes/loop.jinja" %}

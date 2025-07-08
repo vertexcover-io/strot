@@ -4,8 +4,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from ayejax.llm import LLMCompletion
+from ayejax.pagination.strategy import StrategyInfo
 
-__all__ = ("LLMValue", "Context", "CapturedRequest", "CapturedResponse", "Candidate", "Output")
+__all__ = ("AnalysisResult", "Request", "Response", "Metadata", "Output")
 
 
 class PydanticModel(BaseModel):
@@ -22,19 +23,13 @@ class PydanticModel(BaseModel):
         path.write_text(self.model_dump_json(indent=3, exclude_none=True))
 
 
-class LLMValue(PydanticModel):
+class AnalysisResult(PydanticModel):
     keywords: list[str] = []
     navigation_element_point: dict[str, float] | None = None
     popup_element_point: dict[str, float] | None = None
 
 
-class Context(PydanticModel):
-    page_screenshot: bytes
-    extracted_keywords: list[str]
-    relevance_score: float
-
-
-class CapturedRequest(PydanticModel):
+class Request(PydanticModel):
     method: str
     url: str
     queries: dict[str, str]
@@ -42,16 +37,16 @@ class CapturedRequest(PydanticModel):
     post_data: dict[str, Any] | str | None = None
 
 
-class CapturedResponse(PydanticModel):
+class Response(PydanticModel):
     value: str
-    request: CapturedRequest
+    request: Request
 
 
-class Candidate(PydanticModel):
-    request: CapturedRequest
-    context: Context
+class Metadata(PydanticModel):
+    extracted_keywords: list[str]
+    completions: list[LLMCompletion]
 
 
 class Output(PydanticModel):
-    candidates: list[Candidate]
-    completions: list[LLMCompletion]
+    request: Request
+    pagination_strategy: StrategyInfo | None = None

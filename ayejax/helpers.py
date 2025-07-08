@@ -3,11 +3,36 @@ import re
 import threading
 import unicodedata
 from base64 import b64encode
+from urllib.parse import urlparse
 
 import regex
 from json_repair import repair_json
 from PIL import Image, ImageDraw
 from rapidfuzz import fuzz
+
+
+def normalize_filename(url: str) -> str:
+    """
+    Normalize URL to safe filename
+
+    Args:
+        url: URL to normalize
+
+    Returns:
+        Safe filename string
+    """
+    parsed_url = urlparse(url)
+    clean_netloc = parsed_url.netloc.replace(".", "_")
+    clean_path = parsed_url.path.replace("/", "_")
+
+    # Remove special characters, keep only alphanumeric, underscore, hyphen
+    clean_netloc = re.sub(r"[^\w\-]", "", clean_netloc)
+    clean_path = re.sub(r"[^\w\-]", "", clean_path)
+
+    # Remove trailing underscores
+    clean_path = clean_path.strip("_")
+
+    return f"{clean_netloc}__{clean_path}" if clean_path else clean_netloc
 
 
 def normalize(text: str) -> str:
@@ -23,7 +48,7 @@ def tokenize(text: str) -> list[str]:
     return regex.findall(r"\p{L}+", text)
 
 
-def keyword_match_ratio(keywords: list[str], text: str) -> float:
+def keyword_match_ratio(keywords: list[str], text: str, *, cutoff: int = 80) -> float:
     """
     Compute the ratio of keywords found in text (exact or fuzzy),
     supporting Unicode and non-English text.
@@ -43,7 +68,7 @@ def keyword_match_ratio(keywords: list[str], text: str) -> float:
             found = True
         else:
             # Fuzzy match with words in text
-            found = any(fuzz.ratio(norm_kw, w, score_cutoff=80) for w in words)
+            found = any(fuzz.ratio(norm_kw, w, score_cutoff=cutoff) for w in words)
 
         if found:
             with lock:

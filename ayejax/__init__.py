@@ -1,285 +1,464 @@
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
-from urllib.parse import parse_qsl, urlparse, urlsplit
+from typing import Any, Literal
+from urllib.parse import parse_qsl, urlparse
 
-from playwright.async_api import Browser, Page
-from playwright.async_api import Response as PWResponse
-
-from . import llm
-from .helpers import keyword_match_ratio
-from .logging import LoggerType
-from .page_worker import PageWorker
-from .types import (
-    Candidate,
-    CapturedRequest,
-    CapturedResponse,
-    Context,
-    LLMValue,
-    Output,
+from playwright.async_api import (
+    Browser,
+    Page,
+    async_playwright,
+)
+from playwright.async_api import (
+    Response as PageResponse,
 )
 
-__all__ = ("find",)
+from . import llm, pagination
+from .constants import (
+    EXCLUDE_KEYWORDS,
+    HEADERS_TO_IGNORE,
+    PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION,
+    PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION,
+)
+from .helpers import keyword_match_ratio
+from .logging import LoggerType
+from .types import (
+    AnalysisResult,
+    Metadata,
+    Output,
+    Request,
+    Response,
+)
+
+__all__ = ("create_browser", "find")
 
 
-EXCLUDE_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "collect"}
-"""URL filtering keywords"""
+@asynccontextmanager
+async def create_browser(mode: Literal["headed", "headless"]):
+    """
+    Create a browser instance that will be automatically closed.
 
-PROMPT_TEMPLATE = """\
-Your task is to precisely extract keywords from the provided screenshot of a webpage. These keywords must fully comply with the specified user requirements and should exactly match those visible in the screenshot.
+    Args:
+        mode: browser mode to use. Can be "headed" or "headless".
 
-Strictly adhere to the following instructions:
-- Inspect the screenshot for keywords that meet the user-specified criteria.
-- If an overlay popup is visible in the screenshot, identify the "close" or "allow" clickable element's coordinates and assign them to "popup_element_point". If no overlay popup is present, set this to null.
-- If and only if no suitable keywords are found:
-  - set "keywords" to an empty list.
-  - Look for user requirement relevant navigation elements in the following priority order:
-    1. **Pagination controls**: Page numbers (1, 2, 3...), "Next" button, ">" arrow, "More" button, or pagination dots
-    2. **Section navigation**: Menu items, tabs, category links, or filter options that lead to sections likely containing the required keywords
-    3. **Content expansion**: "Show more", "Load more", "Expand", or accordion/dropdown toggles
-  - Select the MOST RELEVANT navigation element that would likely lead to finding the required keywords
-  - Assign the coordinates of this element to "navigation_element_point"
-  - If no relevant navigation element is found, set this to null
-
-Provide your response in JSON matching this schema:
-
-{
-  "keywords": ["<keyword1>", "<keyword2>", ...],
-  "popup_element_point": {"x": <x>, "y": <y>} or null,
-  "navigation_element_point": {"x": <x>, "y": <y>} or null
-}
-
-User Requirement: %s"""
+    Yields:
+        A browser instance.
+    """
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=mode == "headless")
+        yield browser
+        await browser.close()
 
 
-class PageScroller:
-    def __init__(
-        self,
-        *,
-        page: Page,
-        logger: LoggerType,
-        wait_timeout: float | None,
-    ) -> None:
-        self.page = page
-        self.logger = logger
-        self.wait_timeout = wait_timeout or 5000
-
-    async def _eval(self, expr: str, args=None) -> bool:
-        if not await self.page.evaluate("() => window.ayejaxScriptAttached === true"):
-            _ = await self.page.add_script_tag(path=Path(__file__).parent / "inject.js")
-
-        try:
-            self.logger.info("page", action="eval", expr=expr, status="pending")
-            result = bool(await self.page.evaluate(expr, args))
-
-            self.logger.info("page", action="wait", timeout=self.wait_timeout)
-            await self.page.wait_for_load_state("domcontentloaded", timeout=self.wait_timeout)
-
-            self.logger.info("page", action="eval", expr=expr, status="completed", result=result)
-        except Exception as e:
-            if f"Timeout {self.wait_timeout}ms exceeded" not in str(e):
-                self.logger.error("page", action="wait", error=str(e))
-                return False
-            else:
-                self.logger.info("page", action="eval", expr=expr, status="unknown")
-                return True
-
-        return result
-
-    async def scroll_elements_in_view(self) -> bool:
-        return await self._eval("() => scrollElements(getScrollableElements())")
-
-    async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
-        return await self._eval("([direction]) => scrollViewport({ direction })", [direction])
-
-    async def scroll(self) -> bool:
-        # status = await self.scroll_elements_in_view()
-        # self.logger.info("scroll", type="elements-in-view", status=status)
-        # if status:
-        #     return True
-        status = await self.scroll_to_next_view()
-        self.logger.info("scroll", type="next-view", status=status)
-        return status
-
-
-async def click_at_point(page: Page, x: int, y: int, delay: float | None = None) -> bool:
-    """Click the element located at the given *viewport* coordinates."""
-
-    viewport = page.viewport_size or {"width": 0, "height": 0}
-    if not (0 <= x <= viewport["width"] and 0 <= y <= viewport["height"]):
-        raise ValueError(f"Point ({x}, {y}) is outside of the current viewport {viewport}. Consider scrolling first.")
-
-    click_succeeded: bool = await page.evaluate(
-        "([x, y]) => {\n"
-        "  const el = document.elementFromPoint(x, y);\n"
-        "  if (!el) return false;\n"
-        "  try {\n"
-        "    if (typeof el.click === 'function') {\n"
-        "      el.click();\n"
-        "      return true;\n"
-        "    }\n"
-        "    return false;\n"
-        "  } catch {\n"
-        "    return false;\n"
-        "  }\n"
-        "}",
-        [x, y],
-    )
-
-    # Fallback to a direct mouse click if DOM click did not succeed.
-    if not click_succeeded:
-        await page.mouse.move(x, y)
-        await page.mouse.click(x, y)
-
-    delay = delay or 2.0
-    await page.wait_for_timeout(int(delay * 1000))
-
-    return click_succeeded or True  # Always True if no exceptions occurred
-
-
-async def find(  # noqa: C901
+async def find(
     url: str,
     query: str,
     *,
-    max_scrolls: int = 25,
-    max_candidates: int = 10,
-    relevance_threshold: float = 0.4,
-    wait_timeout: float | None = None,
     browser: Browser | Literal["headless", "headed"] = "headed",
-    llm_client: llm.LLMClientInterface,
     logger: LoggerType,
-):
-    response_map: dict[str, CapturedResponse] = {}
-    keywords_list: list[list[str]] = []
-    last_screenshot: bytes
-    candidate_map: dict[str, Candidate] = {}
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    """
+    Run the finder on the given URL.
 
-    prompt = PROMPT_TEMPLATE % query
-    output = Output(candidates=[], completions=[])
-    page_worker = PageWorker(browser=browser, filter_keywords=EXCLUDE_KEYWORDS, filter_mode="exclude")
+    Args:
+        url: The URL to run the finder on.
+        query: The query to run the finder with.
+        browser: The browser to use.
+        logger: The logger to use.
+        max_view_scrolls: The maximum number of view scrolls to perform before exiting.
+        page_load_timeout: The timeout for waiting for the page to load.
 
-    def perform_matching() -> bool:
-        nonlocal last_screenshot
-        for url, response in response_map.items():
-            for kwds in list(keywords_list):
-                score = keyword_match_ratio(kwds, response.value)
-                logger.info("matching", url=url, score=score)
-                if score < relevance_threshold or (
-                    url in candidate_map and candidate_map[url].context.relevance_score > score
-                ):
-                    continue
+    Returns:
+        The output of the finder.
+    """
 
-                candidate_map[url] = Candidate(
-                    request=response.request,
-                    context=Context(
-                        page_screenshot=last_screenshot,
-                        extracted_keywords=kwds,
-                        relevance_score=score,
-                    ),
-                )
-                keywords_list.remove(kwds)
-
-        return len(candidate_map) > 0
-
-    async def process_current_state(page: Page, from_navigation: bool = False, from_popup: bool = False) -> bool:
-        nonlocal last_screenshot
-        logger.info("process-current-state", action="screenshot", type="png")
-
-        last_screenshot = await page.screenshot(type="png")
-        llm_input = llm.LLMInput(prompt=prompt, image=last_screenshot)
+    async def run(browser: Browser):
+        browser_ctx = await browser.new_context(bypass_csp=True)
+        page = await browser_ctx.new_page()
         try:
-            completion = llm_client.get_completion(llm_input, json=True)
-            logger.info("process-current-state", action="llm-completion", status="completed", result=completion.value)
-            output.completions.append(completion)
-        except Exception as e:
-            logger.error("process-current-state", action="llm-completion", status="failed", error=str(e))
-            return False
+            run_ctx = _RunContext(query=query, page=page, logger=logger)
+            await run_ctx.load_url(url, page_load_timeout)
+            return await run_ctx(max_view_scrolls)
+        finally:
+            await browser_ctx.close()
+
+    if isinstance(browser, str):
+        async with create_browser(browser) as browser:
+            return await run(browser)
+
+    return await run(browser)
+
+
+class _JSContext:
+    def __init__(self, page: Page, logger: LoggerType) -> None:
+        self._page = page
+        self._logger = logger
+
+    async def _eval(self, expr: str, args=None) -> bool:
+        if not await self._page.evaluate("() => window.scriptInjected === true"):
+            _ = await self._page.add_script_tag(path=Path(__file__).parent / "inject.js")
 
         try:
-            value = LLMValue.model_validate_json(completion.value)
+            self._logger.info("page", action="eval", expr=expr, args=args)
+            result = await self._page.evaluate(expr, args)
+            await self._page.wait_for_load_state("domcontentloaded")
         except Exception as e:
-            logger.error("process-current-state", action="llm-completion", status="failed", error=str(e))
-            return False
+            self._logger.error("page", action="eval", expr=expr, args=args, exception=e)
+            raise
+        else:
+            return result
 
-        if value.keywords:
-            logger.info("process-current-state", status="success", keywords=value.keywords)
-            keywords_list.append(value.keywords)
+    async def click_element_at_point(self, x: float, y: float) -> None:
+        await self._page.mouse.move(x, y)
+        await self._page.mouse.click(x, y)
+        await self._page.wait_for_timeout(2000)
 
-        if not from_navigation and value.navigation_element_point:
-            logger.info(
-                "process-current-state", action="click", navigation_element_point=value.navigation_element_point
-            )
-            if await click_at_point(page, value.navigation_element_point["x"], value.navigation_element_point["y"]):
-                await process_current_state(page, from_navigation=True)
+    async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
+        return await self._eval("([direction]) => scrollToNextView({ direction })", [direction])
 
-        if not from_popup and value.popup_element_point:
-            logger.info("process-current-state", action="click", popup_element_point=value.popup_element_point)
-            if await click_at_point(page, value.popup_element_point["x"], value.popup_element_point["y"]):
-                await process_current_state(page, from_popup=True)
 
-        return True
+class _continue: ...
 
-    ignore_js = True
 
-    async def on_response(response: PWResponse):
-        if (url := response.request.url) in response_map:
-            return
-
-        nonlocal ignore_js
-        if ignore_js and urlparse(url).path.endswith(".js"):
-            # Some sites load the first set of data from source code instead of making AJAX call
-            return
-
-        try:
-            logger.info("on-response", action="capture", url=url)
-            split = urlsplit(url)
-            response_map[url] = CapturedResponse(
-                value=await response.text(),
-                request=CapturedRequest(
-                    method=response.request.method,
-                    url=f"{split.scheme}://{split.netloc}{split.path}",
-                    queries=dict(parse_qsl(split.query)),
-                    headers=await response.request.all_headers(),
-                    post_data=response.request.post_data_json,
-                ),
-            )
-        except Exception as e:
-            logger.error("on-response", action="capture", url=url, error=str(e))
-
-    async def page_callback(page: Page):
-        await page.wait_for_timeout(4000)
-
-        scroller = PageScroller(
-            page=page,
+class _RunContext:
+    def __init__(
+        self,
+        page: Page,
+        query: str,
+        logger: LoggerType,
+    ) -> None:
+        self._page = page
+        self._query = query
+        self._logger = logger
+        self._llm_client = llm.LLMClient(
+            provider="anthropic",
+            model="claude-3-7-sonnet-latest",
             logger=logger,
-            wait_timeout=wait_timeout,
         )
 
-        nonlocal max_scrolls, ignore_js
-        ignore_js = False
+        self._js_ctx = _JSContext(page, logger)
 
-        while len(candidate_map) < max_candidates and max_scrolls > 0:
-            time.sleep(2.5)
-            if not (await process_current_state(page)):
+        self._ignore_js_files = True
+        self._captured_responses: list[Response] = []
+        self._completions: list[llm.LLMCompletion] = []
+        self._section_navigated = False
+
+        self._page.on("response", self.response_handler)
+
+    async def load_url(self, url: str, load_timeout: float | None) -> None:
+        await self._page.goto(url, timeout=load_timeout, wait_until="commit")
+        await self._page.wait_for_timeout(5000)
+        self._ignore_js_files = False
+
+    async def response_handler(self, response: PageResponse) -> None:
+        rsc_type = response.request.resource_type
+        if rsc_type not in ("xhr", "fetch"):
+            return
+
+        url = urlparse(response.request.url)
+        if self._ignore_js_files and url.path.endswith(".js"):
+            return
+
+        if url.scheme.lower() not in ("http", "https"):
+            return
+
+        clean_url = (url.netloc + url.path).lower()
+        if any(w in clean_url for w in EXCLUDE_KEYWORDS):
+            return
+
+        try:
+            self._logger.info("on-response", action="capture", url=response.request.url)
+            self._captured_responses.append(
+                Response(
+                    value=await response.text(),
+                    request=Request(
+                        method=response.request.method,
+                        url=f"{url.scheme}://{url.netloc}{url.path}",
+                        queries=dict(parse_qsl(url.query)),
+                        headers=await response.request.all_headers(),
+                        post_data=response.request.post_data_json,
+                    ),
+                )
+            )
+        except Exception as exc:
+            self._logger.error("on-response", action="capture", url=response.request.url, exception=exc)
+
+    async def perform_analysis(self) -> AnalysisResult | None:
+        try:
+            screenshot = await self._page.screenshot(type="png")
+            if not self._section_navigated:
+                prompt = PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION % self._query
+            else:
+                prompt = PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION % self._query
+
+            llm_input = llm.LLMInput(prompt=prompt, image=screenshot)
+            completion = self._llm_client.get_completion(llm_input, json=True)
+            self._logger.info("analysis", action="llm-completion", completion=completion.value)
+            self._completions.append(completion)
+        except Exception as exc:
+            self._logger.error("analysis", action="llm-completion", exception=exc)
+            raise
+
+        try:
+            return AnalysisResult.model_validate_json(completion.value)
+        except Exception as exc:
+            self._logger.error("analysis", action="result-validation", exception=exc)
+
+    def perform_matching(self, keywords: list[str]) -> Response | None:
+        self._logger.info("matching", keywords=keywords)
+        for response in self._captured_responses:
+            score = keyword_match_ratio(keywords, response.value)
+            self._logger.info("matching", url=response.request.url, score=score)
+            if score < 0.4:
                 continue
 
-            if len(keywords_list) and perform_matching():
+            return response
+
+    async def determine_strategy(self, response: Response) -> pagination.StrategyInfo | None:  # noqa: C901
+        request = response.request
+
+        def get_key(candidates: set[str], entries: dict[str, Any]) -> str | None:
+            return next((k for k in candidates if k in entries), None)
+
+        def get_entries(request: Request) -> dict[str, Any]:
+            if request.method.lower() == "post" and isinstance(request.post_data, dict):
+                return request.post_data
+            return request.queries
+
+        async def build_next_cursor_info(entries: dict[str, Any]):
+            cursor_key = get_key(pagination.NEXT_CURSOR_KEY_CANDIDATES, entries)
+
+            examples = []
+            max_collection_attempts = 5  # Limit attempts to collect example data
+            previous_response_text = response.value
+            cursor_loop_iteration = 0
+
+            self._logger.info(
+                "cursor-pattern-builder",
+                action="start",
+                initial_cursor_key=cursor_key,
+                target_mappings=3,
+                max_attempts=max_collection_attempts,
+            )
+
+            self._captured_responses.clear()
+            while len(examples) < 3 and max_collection_attempts > 0:
+                cursor_loop_iteration += 1
+                self._logger.info(
+                    "cursor-pattern-builder",
+                    iteration=cursor_loop_iteration,
+                    collected_mappings=len(examples),
+                    remaining_attempts=max_collection_attempts,
+                    current_cursor_key=cursor_key,
+                )
+
+                analysis_result = await self.perform_analysis()
+                if not analysis_result:
+                    max_collection_attempts -= 1
+                    self._logger.warning(
+                        "cursor-pattern-builder", action="analysis-failed", remaining_attempts=max_collection_attempts
+                    )
+                    continue
+
+                self._logger.info(
+                    "cursor-pattern-builder",
+                    action="analysis-success",
+                    keywords=analysis_result.keywords,
+                    has_popup=analysis_result.popup_element_point is not None,
+                    has_navigation=analysis_result.navigation_element_point is not None,
+                )
+
+                new_response = await self.process_analysis_result(analysis_result)
+                if new_response is _continue:
+                    self._logger.info("cursor-pattern-builder", action="continue-processing")
+                    continue
+
+                # Clear captured responses for next iteration
+                self._captured_responses.clear()
+
+                if not new_response:
+                    max_collection_attempts -= 1
+                    self._logger.warning(
+                        "cursor-pattern-builder", action="no-response", remaining_attempts=max_collection_attempts
+                    )
+                    continue
+
+                self._logger.info("cursor-pattern-builder", action="got-response", url=new_response.request.url)
+
+                new_entries = get_entries(new_response.request)
+                if cursor_key is None:
+                    cursor_key = get_key(pagination.NEXT_CURSOR_KEY_CANDIDATES, new_entries)
+                    self._logger.info("cursor-pattern-builder", action="found-cursor-key", cursor_key=cursor_key)
+
+                if cursor_key is None:
+                    self._logger.error(
+                        "cursor-pattern-builder", action="no-cursor-key-found", available_keys=list(new_entries.keys())
+                    )
+                    return None
+
+                # Extract cursor value from the new response's request
+                cursor_value = new_entries.get(cursor_key)
+
+                self._logger.info(
+                    "cursor-pattern-builder",
+                    action="cursor-extraction",
+                    cursor_key=cursor_key,
+                    cursor_value=cursor_value,
+                )
+
+                if cursor_value:
+                    examples.append(
+                        pagination.pattern_builder.Example(
+                            input=previous_response_text,
+                            output=str(cursor_value),
+                        )
+                    )
+                    previous_response_text = new_response.value
+                    self._logger.info(
+                        "cursor-pattern-builder",
+                        action="mapping-added",
+                        total_mappings=len(examples),
+                        cursor_value=cursor_value,
+                    )
+
+                max_collection_attempts -= 1
+
+            if len(examples) >= 2:
+                pattern_builder = pagination.pattern_builder.PatternBuilder(examples)
+                pattern_builder.run()
+
+                if patterns := pattern_builder.patterns:
+                    return pagination.strategy.NextCursorInfo(
+                        cursor_key=cursor_key, first_cursor=entries.get(cursor_key), patterns=patterns
+                    )
+
+            return None
+
+        async def build_strategy_info(entries: dict[str, Any]) -> pagination.StrategyInfo | None:
+            page_key = get_key(pagination.PAGE_KEY_CANDIDATES, entries)
+            offset_key = get_key(pagination.OFFSET_KEY_CANDIDATES, entries)
+            limit_key = get_key(pagination.LIMIT_KEY_CANDIDATES, entries)
+
+            self._logger.info("build-strategy-info", page_key=page_key, offset_key=offset_key, limit_key=limit_key)
+
+            if page_key and offset_key:
+                return pagination.strategy.PageOffsetInfo(
+                    page_key=page_key,
+                    offset_key=offset_key,
+                    base_offset=int(entries[offset_key]) // int(entries[page_key]),
+                )
+            elif limit_key and offset_key:
+                return pagination.strategy.LimitOffsetInfo(
+                    limit_key=limit_key,
+                    offset_key=offset_key,
+                )
+            elif page_key:
+                return pagination.strategy.PageOnlyInfo(page_key=page_key)
+
+            return await build_next_cursor_info(entries)
+
+        strategy_info = await build_strategy_info(get_entries(request))
+
+        return strategy_info
+
+    async def process_analysis_result(self, result: AnalysisResult) -> Response | _continue | None:
+        if keywords := result.keywords:
+            matching_response = self.perform_matching(keywords)
+            if matching_response:
+                return matching_response
+
+        should_continue = False
+        if popup_element_point := result.popup_element_point:
+            await self._js_ctx.click_element_at_point(popup_element_point["x"], popup_element_point["y"])
+            should_continue = True
+
+        if navigation_element_point := result.navigation_element_point:
+            await self._js_ctx.click_element_at_point(navigation_element_point["x"], navigation_element_point["y"])
+            self._section_navigated = True
+            should_continue = True
+
+        return _continue if should_continue else None
+
+    async def __call__(self, max_view_scrolls: int) -> tuple[Output | None, Metadata]:
+        analysis_retry_count = 5
+        main_loop_iteration = 0
+
+        self._logger.info("main-loop", action="start", max_view_scrolls=max_view_scrolls)
+
+        while max_view_scrolls:
+            main_loop_iteration += 1
+            self._logger.info(
+                "main-loop",
+                iteration=main_loop_iteration,
+                remaining_scrolls=max_view_scrolls,
+                retry_count=analysis_retry_count,
+                captured_responses=len(self._captured_responses),
+            )
+
+            analysis_result = await self.perform_analysis()
+            if not analysis_result:
+                analysis_retry_count -= 1
+                self._logger.warning("main-loop", action="analysis-failed", retry_count=analysis_retry_count)
+                if analysis_retry_count <= 0:
+                    self._logger.error("main-loop", action="max-retries-exceeded")
+                    break
+
+                continue
+
+            analysis_retry_count = 5
+            self._logger.info(
+                "main-loop",
+                action="analysis-success",
+                keywords=analysis_result.keywords,
+                has_popup=analysis_result.popup_element_point is not None,
+                has_navigation=analysis_result.navigation_element_point is not None,
+            )
+
+            try:
+                response = await self.process_analysis_result(analysis_result)
+            except Exception as e:
+                self._logger.error("main-loop", action="process-analysis-error", error=str(e))
+                continue
+
+            if isinstance(response, Response):
+                self._logger.info("main-loop", action="found-matching-response", url=response.request.url)
+
+                # Filter out headers to ignore
+                for key in list(response.request.headers):
+                    if key.lstrip(":").lower() in HEADERS_TO_IGNORE:
+                        response.request.headers.pop(key)
+
+                output = Output(
+                    request=response.request,
+                    pagination_strategy=await self.determine_strategy(response),
+                )
+                metadata = Metadata(
+                    extracted_keywords=analysis_result.keywords,
+                    completions=self._completions,
+                )
+                return output, metadata
+            elif response is _continue:
+                self._logger.info("main-loop", action="continue-processing")
+                continue
+
+            self._logger.info("main-loop", action="scrolling-to-next-view")
+            if not (await self._js_ctx.scroll_to_next_view()):
+                self._logger.info("main-loop", action="scroll-failed-or-end")
                 break
 
-            logger.info("scroll", responses_before=len(response_map))
-            if not (await scroller.scroll()):
-                break
+            max_view_scrolls -= 1
+            time.sleep(2.5)
 
-            logger.info("scroll", responses_after=len(response_map))
-            max_scrolls -= 1
+        self._logger.info(
+            "main-loop",
+            action="completed-without-match",
+            total_iterations=main_loop_iteration,
+            total_completions=len(self._completions),
+        )
 
-    await page_worker.run(
-        url=url,
-        wait_timeout=wait_timeout,
-        on_response=on_response,
-        page_callback=page_callback,
-        logger=logger,
-    )
-
-    output.candidates = sorted(candidate_map.values(), key=lambda c: c.context.relevance_score, reverse=True)
-    return output
+        return None, Metadata(
+            extracted_keywords=[],
+            completions=self._completions,
+        )
