@@ -20,6 +20,7 @@ QUERY = (
 
 @app.default
 async def main(
+    *,
     url: Annotated[str, Parameter(name=("-u", "--url"))],
     query: Annotated[str, Parameter(name=("-q", "--query"), show_default=False)] = QUERY,
 ):

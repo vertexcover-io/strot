@@ -28,13 +28,18 @@ Get ajax call using natural language query
 ╰────────────────────────────────────────────────────────────────╯
 ╭─ Parameters ───────────────────────────────────────────────────╮
 │ *  --url    -u  URL to find ajax call for [required]           │
-│ *  --query  -q  Natural language query [required]              │
+│    --query  -q  Natural language query                         │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
+> If you don't provide a query, it will use the default review query
+
 ```bash
 export ANTHROPIC_API_KEY=<YOUR_API_KEY>
-ayejax --url "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288" --query "all the user reviews for the product"
+ayejax --url "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288"
+ayejax --url "https://www.getcleanpeople.com/product/fresh-clean-laundry-detergent/"
+ayejax --url "https://antica-barberia.us/products/silver-brushed-aluminum-shaving-lather-brush-with-pure-bleached-bristle"
+ayejax --url "https://farmersjuice.com/products/variety-juice-box"
 ```
 
 ### Library
@@ -48,19 +53,7 @@ setup_logging()
 logger = get_logger("ayejax")
 ```
 
-Create an LLM client of your choice
-
-> Available providers: `openai`, `anthropic`, `groq` and `open-router`
-
-```python
-from ayejax import llm
-
-llm_client = llm.LLMClient(
-    provider="anthropic", model="claude-3-7-sonnet-latest", api_key="YOUR_API_KEY", logger=logger
-)
-```
-
-Call the `find` function with the URL, query and LLM client
+Call the `find` function with the URL, query and logger
 
 ```python
 import ayejax
@@ -72,7 +65,6 @@ output = await ayejax.find(
         "Ignore the summary of the reviews. "
         "The reviews are typically available as a list of reviews towards the bottom of the page"
     ),
-    llm_client=llm_client,
     logger=logger,
 )
 ```
@@ -80,10 +72,8 @@ output = await ayejax.find(
 Generate Python code
 
 ```python
-from ayejax.codegen import PythonCode
+from ayejax.codegen import generate_python_code
 
-request = output.candidates[0].request
-python_code = PythonCode.from_request(request, template="httpx") # Available templates: httpx, requests
 with open("scrape-solawave-eye-mask-reviews.py", "w") as f:
-    f.write(python_code.render(caller_type="loop"))
+    f.write(generate_python_code(output))
 ```
