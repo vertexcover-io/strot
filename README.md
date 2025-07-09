@@ -28,11 +28,9 @@ Get ajax call using natural language query
 ╰────────────────────────────────────────────────────────────────╯
 ╭─ Parameters ───────────────────────────────────────────────────╮
 │ *  --url    -u  URL to find ajax call for [required]           │
-│    --query  -q  Natural language query                         │
+│    --tag  -t  Tag to use [choices: reviews] [default: reviews] │
 ╰────────────────────────────────────────────────────────────────╯
 ```
-
-> If you don't provide a query, it will use the default review query
 
 ```bash
 export ANTHROPIC_API_KEY=<YOUR_API_KEY>
@@ -53,7 +51,7 @@ setup_logging()
 logger = get_logger("ayejax")
 ```
 
-Call the `find` function with the URL, query and logger
+Call the `find` function with the URL, query/tag and logger
 
 ```python
 import ayejax

@@ -13,12 +13,6 @@ setup_logging()
 ROOT_DIR = Path(__file__).parent
 RESULTS_FILE = ROOT_DIR / "results.jsonl"
 
-QUERY = (
-    "All the user reviews for the product. "
-    "Ignore the summary of the reviews. "
-    "The reviews are typically available as a list of reviews towards the bottom of the page"
-)
-
 
 async def main():
     total_eval_cost = 0
@@ -32,9 +26,10 @@ async def main():
         logger = get_logger(logger_name, file_handler_config=file_handler_config)
 
         try:
-            output, metadata = await ayejax.find(url, QUERY, logger=logger)
+            output, metadata = await ayejax.find(url, ayejax.Tag.reviews, logger=logger)
             if output is None:
                 logger.error("find", error="No relevant request found")
+                continue
         except Exception as e:
             logger.error("find", error=str(e))
             continue

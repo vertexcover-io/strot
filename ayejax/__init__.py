@@ -1,7 +1,8 @@
 import time
 from contextlib import asynccontextmanager
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, overload
 from urllib.parse import parse_qsl, urlparse
 
 from playwright.async_api import (
@@ -30,7 +31,11 @@ from .types import (
     Response,
 )
 
-__all__ = ("create_browser", "find")
+__all__ = ("create_browser", "find", "Tag")
+
+
+class Tag(StrEnum):
+    reviews = "User reviews for the product. Ignore the summary of the reviews."
 
 
 @asynccontextmanager
@@ -50,9 +55,38 @@ async def create_browser(mode: Literal["headed", "headless"]):
         await browser.close()
 
 
+@overload
+async def find(
+    url: str,
+    tag: Tag,
+    /,
+    *,
+    browser: Browser | Literal["headless", "headed"] = "headed",
+    logger: LoggerType,
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    """
+    Run the finder on the given URL and tag.
+
+    Args:
+        url: The URL to run the finder on.
+        tag: The tag to run the finder with.
+        browser: The browser to use.
+        logger: The logger to use.
+        max_view_scrolls: The maximum number of view scrolls to perform before exiting.
+        page_load_timeout: The timeout for waiting for the page to load.
+
+    Returns:
+        Tuple of output and metadata.
+    """
+
+
+@overload
 async def find(
     url: str,
     query: str,
+    /,
     *,
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
@@ -71,8 +105,21 @@ async def find(
         page_load_timeout: The timeout for waiting for the page to load.
 
     Returns:
-        The output of the finder.
+        Tuple of output and metadata.
     """
+
+
+async def find(
+    url: str,
+    query_or_tag: str | Tag,
+    /,
+    *,
+    browser: Browser | Literal["headless", "headed"] = "headed",
+    logger: LoggerType,
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    query = query_or_tag.value if isinstance(query_or_tag, Tag) else query_or_tag
 
     async def run(browser: Browser):
         browser_ctx = await browser.new_context(bypass_csp=True)
@@ -371,11 +418,11 @@ class _RunContext:
 
         should_continue = False
         if popup_element_point := result.popup_element_point:
-            await self._js_ctx.click_element_at_point(popup_element_point["x"], popup_element_point["y"])
+            await self._js_ctx.click_element_at_point(popup_element_point.x, popup_element_point.y)
             should_continue = True
 
         if navigation_element_point := result.navigation_element_point:
-            await self._js_ctx.click_element_at_point(navigation_element_point["x"], navigation_element_point["y"])
+            await self._js_ctx.click_element_at_point(navigation_element_point.x, navigation_element_point.y)
             self._section_navigated = True
             should_continue = True
 
