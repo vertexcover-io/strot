@@ -1,0 +1,14 @@
+{%- if output.pagination_strategy is defined and output.pagination_strategy.__class__.__name__ == 'NextCursorInfo' %}
+import re
+
+def extract_cursor(response_text: str) -> str:
+    for pattern in output.pagination_strategy.patterns:
+        match = re.search(re.escape(pattern.before) + r'(.*?)' + re.escape(pattern.after), response_text)
+        if match:
+            return match.group(1)
+    return None
+
+def make_request(cursor: str | None) -> str:
+{%- else %}
+def make_request(request_number: int = 1) -> str:
+{%- endif %}

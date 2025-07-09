@@ -168,7 +168,7 @@ function scrollElements(elements, options = {}) {
 /**
  * Viewport scroll.
  */
-function scrollViewport(options = {}) {
+function scrollToNextView(options = {}) {
   const { direction = "down" } = options;
 
   const maxY =
@@ -202,22 +202,6 @@ function scrollViewport(options = {}) {
   });
 }
 
-/**
- * Basic viewport visibility check.
- */
-function isElementInViewport(el) {
-  const rect = el.getBoundingClientRect();
-  return (
-    rect.top < window.innerHeight &&
-    rect.bottom > 0 &&
-    rect.left < window.innerWidth &&
-    rect.right > 0
-  );
-}
-
 // Expose to window
-window.getScrollableElements = getScrollableElements;
-window.scrollElement = scrollElement;
-window.scrollElements = scrollElements;
-window.scrollViewport = scrollViewport;
-window.ayejaxScriptAttached = true;
+window.scrollToNextView = scrollToNextView;
+window.scriptInjected = true;
