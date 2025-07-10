@@ -18,18 +18,19 @@ uv sync
 
 ```
 $ ayejax --help
-Usage: ayejax COMMAND
+Usage: ayejax COMMAND [OPTIONS]
 
 Get ajax call using natural language query
 
-╭─ Commands ─────────────────────────────────────────────────────╮
-│ --help -h  Display this message and exit.                      │
-│ --version  Display application version.                        │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Parameters ───────────────────────────────────────────────────╮
-│ *  --url    -u  URL to find ajax call for [required]           │
-│    --tag  -t  Tag to use [choices: reviews] [default: reviews] │
-╰────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────╮
+│ serve      Serve the API                                             │
+│ --help -h  Display this message and exit.                            │
+│ --version  Display application version.                              │
+╰──────────────────────────────────────────────────────────────────────╯
+╭─ Parameters ─────────────────────────────────────────────────────────╮
+│ *  --url  -u  URL to find ajax call for [required]                   │
+│    --tag  -t  Tag to use [choices: reviews] [default: reviews]       │
+╰──────────────────────────────────────────────────────────────────────╯
 ```
 
 ```bash
@@ -38,6 +39,26 @@ ayejax --url "https://global.solawave.co/products/red-light-therapy-eye-mask?var
 ayejax --url "https://www.getcleanpeople.com/product/fresh-clean-laundry-detergent/"
 ayejax --url "https://antica-barberia.us/products/silver-brushed-aluminum-shaving-lather-brush-with-pure-bleached-bristle"
 ayejax --url "https://farmersjuice.com/products/variety-juice-box"
+```
+
+### API
+
+```
+$ ayejax serve --help
+Usage: ayejax serve [OPTIONS]
+
+Serve the API
+
+╭─ Parameters ─────────────────────────────────────────────────────────╮
+│ --host              -h  Host to serve on [default: 0.0.0.0]          │
+│ --port              -p  Port to serve on [default: 1337]             │
+│ --watch --no-watch      Watch for changes and reload                 │
+╰──────────────────────────────────────────────────────────────────────╯
+```
+
+```bash
+export ANTHROPIC_API_KEY=<YOUR_API_KEY>
+ayejax serve
 ```
 
 ### Library

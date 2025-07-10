@@ -1,7 +1,7 @@
 import json
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App, Parameter, validators
 
 import ayejax
 from ayejax.helpers import normalize_filename
@@ -38,5 +38,21 @@ async def main(
     logger.info("calculate-total-cost", cost_in_usd=sum(c.calculate_cost(3.0, 15.0) for c in metadata.completions))
 
 
-if __name__ == "__main__":
-    app()
+@app.command
+def serve(
+    *,
+    host: Annotated[str, Parameter(name=("-h", "--host"))] = "0.0.0.0",  # noqa: S104
+    port: Annotated[int, Parameter(name=("-p", "--port"), validator=validators.Number(gt=1024, lt=65535))] = 1337,
+    watch: Annotated[bool, Parameter(name=("--watch"), show_default=False)] = False,
+):
+    """
+    Serve the API
+
+    Args:
+        host: Host to serve on
+        port: Port to serve on
+        watch: Watch for changes and reload
+    """
+    import uvicorn
+
+    uvicorn.run("ayejax._interface.api:app", host=host, port=port, reload=watch)

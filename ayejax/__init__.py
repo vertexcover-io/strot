@@ -1,5 +1,5 @@
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -55,8 +55,13 @@ async def create_browser(mode: Literal["headed", "headless"]):
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=mode == "headless")
-        yield browser
-        await browser.close()
+        try:
+            yield browser
+        finally:
+            try:
+                await browser.close()
+            except Exception:
+                suppress(Exception)
 
 
 @overload

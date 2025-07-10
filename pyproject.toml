@@ -18,6 +18,7 @@ dependencies = [
     "anthropic>=0.50.0",
     "beautifulsoup4>=4.13.4",
     "cyclopts>=3.19.0",
+    "fastapi>=0.116.0",
     "jinja2>=3.1.6",
     "json-repair>=0.44.1",
     "openai>=1.76.0",
@@ -29,6 +30,7 @@ dependencies = [
     "regex>=2024.11.6",
     "requests>=2.32.4",
     "structlog>=25.4.0",
+    "uvicorn>=0.35.0",
 ]
 
 [project.urls]
@@ -46,7 +48,7 @@ dev-dependencies = [
 ]
 
 [project.scripts]
-ayejax = "ayejax.main:app"
+ayejax = "ayejax._interface.cli:app"
 
 [build-system]
 requires = ["setuptools >= 61.0"]
