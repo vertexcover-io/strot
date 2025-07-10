@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ayejax import create_browser
+from ayejax._interface.api.database import sessionmanager
 from ayejax._interface.api.routes import apis, jobs
 from ayejax._interface.api.settings import settings
 
@@ -14,7 +15,11 @@ from ayejax._interface.api.settings import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager"""
-    async with create_browser("headless" if settings.ENV == "prod" else "headed") as browser:
+
+    async with (
+        sessionmanager,
+        create_browser("headless" if settings.ENV == "prod" else "headed") as browser,
+    ):
         app.state.browser = browser
         yield
 

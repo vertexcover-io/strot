@@ -15,11 +15,27 @@ from ayejax._interface.api.settings import settings
 
 class SessionManager:
     def __init__(self, uri: str, **engine_kwargs) -> None:
-        self._engine = create_async_engine(uri, **engine_kwargs)
+        self._uri = uri
+        self._engine_kwargs = engine_kwargs
+        self._engine = None
+        self._sessionmaker = None
+
+    async def __aenter__(self):
+        self._engine = create_async_engine(self._uri, **self._engine_kwargs)
         self._sessionmaker = async_sessionmaker(autocommit=False, bind=self._engine)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._engine:
+            await self._engine.dispose()
+
+        self._engine = None
+        self._sessionmaker = None
 
     @contextlib.asynccontextmanager
     async def connect(self) -> AsyncIterator[AsyncConnection]:
+        if not self._engine:
+            raise RuntimeError("Engine not created. Use 'async with' context on SessionManager instance.")
         async with self._engine.begin() as connection:
             try:
                 yield connection
@@ -29,6 +45,8 @@ class SessionManager:
 
     @contextlib.asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:
+        if not self._sessionmaker:
+            raise RuntimeError("Engine not created. Use 'async with' context on SessionManager instance.")
         session = self._sessionmaker()
         try:
             yield session
@@ -39,7 +57,7 @@ class SessionManager:
             await session.close()
 
 
-sessionmanager = SessionManager(settings.POSTGRES_URI)
+sessionmanager = SessionManager(settings.POSTGRES_URI)  # This context will be entered in main.py
 
 
 async def get_db_session():
