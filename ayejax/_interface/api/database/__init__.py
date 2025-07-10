@@ -60,7 +60,7 @@ class SessionManager:
 sessionmanager = SessionManager(settings.POSTGRES_URI)  # This context will be entered in main.py
 
 
-async def get_db_session():
+async def get_db_session() -> AsyncIterator[AsyncSession]:
     async with sessionmanager.session() as session:
         yield session
 
