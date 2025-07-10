@@ -58,10 +58,8 @@ async def create_browser(mode: Literal["headed", "headless"]):
         try:
             yield browser
         finally:
-            try:
+            with suppress(Exception):
                 await browser.close()
-            except Exception:
-                suppress(Exception)
 
 
 @overload

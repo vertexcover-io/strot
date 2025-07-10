@@ -77,9 +77,7 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest):
     try:
         logger = get_logger(f"job-{job_id!s}", file_handler_config=FileHandlerConfig(directory=LOG_DIR / "jobs"))
 
-        output, metadata = await find(
-            str(request.url), Tag._member_map_[request.tag], browser=app.state.browser, logger=logger
-        )
+        output, metadata = await find(str(request.url), Tag[request.tag], browser=app.state.browser, logger=logger)
 
         jobs[job_id].completed_at = datetime.now()
         jobs[job_id].metadata = metadata
@@ -153,12 +151,13 @@ async def get_job(job_id: UUID):  # noqa: C901
                 update_entries(job_entry.output.request.queries)
 
         try:
-            response = requests.request(  # noqa: S113
+            response = requests.request(
                 job_entry.output.request.method,
                 job_entry.output.request.url,
                 params=job_entry.output.request.queries,
                 headers=job_entry.output.request.headers,
                 data=job_entry.output.request.post_data,
+                timeout=30,
             )
             response.raise_for_status()
             if job_entry.pagination_state is not None:
