@@ -2,7 +2,7 @@
 Job routes for creating new API patterns
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -59,7 +59,7 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, db: DBSes
         if not job:
             return
 
-        job.completed_at = datetime.now()
+        job.completed_at = datetime.now(timezone.utc)
         job.analysis_metadata = metadata.model_dump() if metadata else None
 
         if output is not None:
@@ -72,7 +72,7 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, db: DBSes
             if existing_output:
                 # Update existing output with new analysis
                 existing_output.value = output.model_dump()
-                existing_output.updated_at = datetime.now()
+                existing_output.updated_at = datetime.now(timezone.utc)
             else:
                 db.add(
                     Output(
@@ -80,8 +80,8 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, db: DBSes
                         url=str(request.url),
                         tag=request.tag,
                         value=output.model_dump(),
-                        created_at=datetime.now(),
-                        updated_at=datetime.now(),
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc),
                     )
                 )
             job.status = "ready"
@@ -97,7 +97,7 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, db: DBSes
         job = result.scalar_one_or_none()
         if job:
             job.status = "failed"
-            job.completed_at = datetime.now()
+            job.completed_at = datetime.now(timezone.utc)
             job.message = str(e)
             await db.commit()
 
@@ -115,7 +115,7 @@ async def create_job(
         tag=request.tag,
         status="pending",
         message="Analyzing the webpage",
-        created_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
     )
 
     db.add(job)

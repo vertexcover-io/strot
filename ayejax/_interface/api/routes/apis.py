@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -83,7 +83,9 @@ async def create_session(request: CreateSessionRequest, db: DBSessionDependency)
         raise HTTPException(status_code=404, detail="Output not found")
 
     session_id = uuid4()
-    session = SessionModel(id=session_id, output_id=request.output_id, request_number=0, created_at=datetime.now())
+    session = SessionModel(
+        id=session_id, output_id=request.output_id, request_number=0, created_at=datetime.now(timezone.utc)
+    )
 
     # Initialize cursor if output has NextCursorInfo pagination
     output_data = AyejaxOutput.model_validate(output.value)
@@ -142,10 +144,10 @@ async def execute_session(session_id: UUID, db: DBSessionDependency):
             else:
                 session.request_number += 1
 
-        session.last_executed_at = datetime.now()
+        session.last_executed_at = datetime.now(timezone.utc)
 
         session.output.usage_count += 1
-        session.output.last_used_at = datetime.now()
+        session.output.last_used_at = datetime.now(timezone.utc)
 
         await db.commit()
         await db.refresh(session)
