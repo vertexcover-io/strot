@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from ayejax._interface.api.database import DBSessionDependency
 from ayejax._interface.api.database.models.output import Output
 from ayejax._interface.api.database.models.session import Session as SessionModel
+from ayejax._interface.api.settings import settings
 from ayejax.pagination.strategy import NextCursorInfo
 from ayejax.tag import TagLiteral
 from ayejax.types import Output as AyejaxOutput
@@ -43,10 +44,6 @@ class CreateSessionResponse(BaseModel):
     session_id: UUID
     output_id: UUID
     created_at: datetime
-
-
-class SessionExecuteResponse(BaseModel):
-    data: dict[str, Any]
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -99,8 +96,8 @@ async def create_session(request: CreateSessionRequest, db: DBSessionDependency)
     return CreateSessionResponse(session_id=session_id, output_id=request.output_id, created_at=session.created_at)
 
 
-@router.post("/sessions/{session_id}/execute", response_model=SessionExecuteResponse)
-async def execute_session(session_id: UUID, db: DBSessionDependency):
+@router.post("/sessions/{session_id}/execute")
+async def execute_session(session_id: UUID, db: DBSessionDependency):  # noqa: C901
     """Execute API request through session"""
     result = await db.execute(
         select(SessionModel).options(selectinload(SessionModel.output)).where(SessionModel.id == session_id)
@@ -133,7 +130,7 @@ async def execute_session(session_id: UUID, db: DBSessionDependency):
             params=output.request.queries,
             headers=output.request.headers,
             data=output.request.post_data,
-            timeout=30,
+            timeout=settings.SESSION_EXECUTE_REQUEST_TIMEOUT,
         )
         response.raise_for_status()
 
@@ -152,7 +149,10 @@ async def execute_session(session_id: UUID, db: DBSessionDependency):
         await db.commit()
         await db.refresh(session)
 
-        return SessionExecuteResponse(data={session.output.tag: response.text})
-
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"External API request failed: {e!s}") from e
     except Exception as e:
-        return SessionExecuteResponse(data={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Internal error: {e!s}") from e
+
+    else:
+        return {session.output.tag: response.text}
