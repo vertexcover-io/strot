@@ -26,7 +26,7 @@ async def main():
         logger = get_logger(logger_name, file_handler_config=file_handler_config)
 
         try:
-            output, metadata = await ayejax.find(url, ayejax.Tag.reviews, logger=logger)
+            output, metadata = await ayejax.analyze(url, "reviews", logger=logger)
             if output is None:
                 logger.error("find", error="No relevant request found")
                 continue

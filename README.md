@@ -1,4 +1,4 @@
-<p align="center">Get ajax call using natural language query</p>
+<p align="center">Discover API endpoints with natural language</p>
 
 ---
 
@@ -20,7 +20,7 @@ uv sync
 $ ayejax --help
 Usage: ayejax COMMAND [OPTIONS]
 
-Get ajax call using natural language query
+Discover API endpoints with natural language
 
 ╭─ Commands ───────────────────────────────────────────────────────────╮
 │ serve      Serve the API                                             │
@@ -49,15 +49,31 @@ Usage: ayejax serve [OPTIONS]
 
 Serve the API
 
-╭─ Parameters ─────────────────────────────────────────────────────────╮
-│ --host              -h  Host to serve on [default: 0.0.0.0]          │
-│ --port              -p  Port to serve on [default: 1337]             │
-│ --watch --no-watch      Watch for changes and reload                 │
-╰──────────────────────────────────────────────────────────────────────╯
+╭─ Parameters ──────────────────────────────────────╮
+│ --host  -h  Host to serve on [default: 0.0.0.0]   │
+│ --port  -p  Port to serve on [default: 1337]      │
+╰───────────────────────────────────────────────────╯
 ```
+
+Set your Anthropic API key
 
 ```bash
 export ANTHROPIC_API_KEY=<YOUR_API_KEY>
+```
+
+Start postgres using docker-compose and serve the API
+
+```bash
+docker compose up -d
+alembic upgrade head
+ayejax serve
+```
+
+Or, If you want to connect to a different postgres instance
+
+```bash
+export POSTGRES_USER=... POSTGRES_PASSWORD=... POSTGRES_DB=... POSTGRES_HOST=... POSTGRES_PORT=...
+alembic upgrade head
 ayejax serve
 ```
 
@@ -72,12 +88,12 @@ setup_logging()
 logger = get_logger("ayejax")
 ```
 
-Call the `find` function with the URL, query/tag and logger
+Call the `analyze` function with the URL, query/tag and logger
 
 ```python
 import ayejax
 
-output = await ayejax.find(
+output = await ayejax.analyze(
     "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288",
     (
         "All the user reviews for the product. "

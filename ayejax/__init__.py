@@ -1,6 +1,5 @@
 import time
 from contextlib import asynccontextmanager, suppress
-from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, overload
 from urllib.parse import parse_qsl, urlparse
@@ -14,16 +13,17 @@ from playwright.async_api import (
     Response as PageResponse,
 )
 
-from . import llm, pagination
-from .constants import (
+from ayejax import llm, pagination
+from ayejax.constants import (
     EXCLUDE_KEYWORDS,
     HEADERS_TO_IGNORE,
     PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION,
     PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION,
 )
-from .helpers import keyword_match_ratio
-from .logging import LoggerType
-from .types import (
+from ayejax.helpers import keyword_match_ratio
+from ayejax.logging import LoggerType
+from ayejax.tag import Tag, TagLiteral
+from ayejax.types import (
     AnalysisResult,
     Metadata,
     Output,
@@ -31,15 +31,7 @@ from .types import (
     Response,
 )
 
-__all__ = ("create_browser", "find", "Tag")
-
-
-class Tag(StrEnum):
-    reviews = (
-        "All the user reviews for the product. "
-        "Ignore the summary of the reviews. "
-        "The reviews are typically available as a list of reviews towards the bottom of the page."
-    )
+__all__ = ("analyse", "analyze", "create_browser", "find")
 
 
 @asynccontextmanager
@@ -63,7 +55,7 @@ async def create_browser(mode: Literal["headed", "headless"]):
 
 
 @overload
-async def find(
+async def analyze(
     url: str,
     tag: Tag,
     /,
@@ -74,11 +66,11 @@ async def find(
     page_load_timeout: float | None = None,
 ) -> tuple[Output | None, Metadata]:
     """
-    Run the finder on the given URL and tag.
+    Run analysis on the given URL using the given tag.
 
     Args:
-        url: The URL to run the finder on.
-        tag: The tag to run the finder with.
+        url: The target web page URL to analyze.
+        tag: The kind of information to look for (e.g. reviews).
         browser: The browser to use.
         logger: The logger to use.
         max_view_scrolls: The maximum number of view scrolls to perform before exiting.
@@ -90,9 +82,9 @@ async def find(
 
 
 @overload
-async def find(
+async def analyze(
     url: str,
-    query: str,
+    tag: TagLiteral,
     /,
     *,
     browser: Browser | Literal["headless", "headed"] = "headed",
@@ -101,11 +93,11 @@ async def find(
     page_load_timeout: float | None = None,
 ) -> tuple[Output | None, Metadata]:
     """
-    Run the finder on the given URL.
+    Run analysis on the given URL using the given tag.
 
     Args:
-        url: The URL to run the finder on.
-        query: The query to run the finder with.
+        url: The target web page URL to analyze.
+        tag: The kind of information to look for (e.g. reviews).
         browser: The browser to use.
         logger: The logger to use.
         max_view_scrolls: The maximum number of view scrolls to perform before exiting.
@@ -116,9 +108,10 @@ async def find(
     """
 
 
-async def find(
+@overload
+async def analyze(
     url: str,
-    query_or_tag: str | Tag,
+    query: str,
     /,
     *,
     browser: Browser | Literal["headless", "headed"] = "headed",
@@ -126,7 +119,36 @@ async def find(
     max_view_scrolls: int = 30,
     page_load_timeout: float | None = None,
 ) -> tuple[Output | None, Metadata]:
-    query = query_or_tag.value if isinstance(query_or_tag, Tag) else query_or_tag
+    """
+    Run analysis on the given URL using the given query.
+
+    Args:
+        url: The target web page URL to analyze.
+        query: The query to use for analysis.
+        browser: The browser to use.
+        logger: The logger to use.
+        max_view_scrolls: The maximum number of view scrolls to perform before exiting.
+        page_load_timeout: The timeout for waiting for the page to load.
+
+    Returns:
+        Tuple of output and metadata.
+    """
+
+
+async def analyze(
+    url: str,
+    query_or_tag: str | Tag | TagLiteral,
+    /,
+    *,
+    browser: Browser | Literal["headless", "headed"] = "headed",
+    logger: LoggerType,
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    if isinstance(query_or_tag, Tag):
+        query = query_or_tag.value
+    else:
+        query = Tag[query_or_tag].value if query_or_tag in Tag.__members__ else query_or_tag
 
     async def run(browser: Browser):
         browser_ctx = await browser.new_context(bypass_csp=True)
@@ -145,7 +167,15 @@ async def find(
     return await run(browser)
 
 
+analyse = analyze  # Alias for :func:`analyze`
+find = analyze  # Alias for :func:`analyze` (backward compatible)
+
+
 class _JSContext:
+    """
+    Context manager for JavaScript evaluation.
+    """
+
     def __init__(self, page: Page, logger: LoggerType) -> None:
         self._page = page
         self._logger = logger

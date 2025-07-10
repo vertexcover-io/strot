@@ -15,7 +15,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "alembic>=1.16.3",
     "anthropic>=0.50.0",
+    "asyncpg>=0.30.0",
     "beautifulsoup4>=4.13.4",
     "cyclopts>=3.19.0",
     "fastapi>=0.116.0",
@@ -25,10 +27,12 @@ dependencies = [
     "pillow>=11.2.1",
     "playwright>=1.51.0",
     "pydantic>=2.11.3",
+    "pydantic-settings>=2.10.1",
     "python-magic>=0.4.27",
     "rapidfuzz>=3.13.0",
     "regex>=2024.11.6",
     "requests>=2.32.4",
+    "sqlalchemy>=2.0.41",
     "structlog>=25.4.0",
     "uvicorn>=0.35.0",
 ]

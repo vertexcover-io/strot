@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .pattern_builder import Pattern
+from ayejax.pagination.pattern_builder import Pattern
 
 
 class PageOnlyInfo(BaseModel):

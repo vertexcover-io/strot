@@ -7,8 +7,8 @@ import anthropic
 import openai
 from pydantic import BaseModel, PrivateAttr, model_validator
 
-from .helpers import encode_image, extract_json, guess_image_type
-from .logging import LoggerType
+from ayejax.helpers import encode_image, extract_json, guess_image_type
+from ayejax.logging import LoggerType
 
 LLMProvider = Literal["openai", "anthropic", "groq", "open-router"]
 
