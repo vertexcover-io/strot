@@ -5,7 +5,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
     ENV: Literal["local", "prod"] = "local"
+    API_KEY: str
 
     POSTGRES_USER: str = "synacktra"
     POSTGRES_PASSWORD: str = "secretpassword"

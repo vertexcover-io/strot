@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 import ayejax
+from ayejax._interface.api.auth import AuthDependency
 from ayejax._interface.api.database import DBSessionDependency, sessionmanager
 from ayejax._interface.api.database.models.execution_state import ExecutionState
 from ayejax._interface.api.database.models.job import Job
@@ -55,7 +56,11 @@ class GetJobResponse(BaseModel):
 
 @router.post("/", response_model=CreateJobResponse)
 async def create_job(
-    raw_request: Request, request: CreateJobRequest, db: DBSessionDependency, background_tasks: BackgroundTasks
+    raw_request: Request,
+    request: CreateJobRequest,
+    db: DBSessionDependency,
+    background_tasks: BackgroundTasks,
+    _: AuthDependency,
 ):
     """Create a new job for API pattern generation"""
     job_id = uuid4()
@@ -78,7 +83,7 @@ async def create_job(
 
 
 @router.get("/{job_id}", response_model=GetJobResponse)
-async def get_job(job_id: UUID, db: DBSessionDependency):
+async def get_job(job_id: UUID, db: DBSessionDependency, _: AuthDependency):
     """Get job details"""
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()

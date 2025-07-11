@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy import select
 
+from ayejax._interface.api.auth import AuthDependency
 from ayejax._interface.api.database import DBSessionDependency
 from ayejax._interface.api.database.models.output import Output
 from ayejax.tag import TagLiteral
@@ -31,7 +32,7 @@ class SearchResponse(BaseModel):
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search_apis(request: SearchRequest, db: DBSessionDependency):
+async def search_apis(request: SearchRequest, db: DBSessionDependency, _: AuthDependency):
     """Search for existing API outputs by URL and tag"""
     result = await db.execute(
         select(Output)
