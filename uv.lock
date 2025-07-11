@@ -103,6 +103,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "jinja2" },
     { name = "json-repair" },
+    { name = "jsonref" },
     { name = "openai" },
     { name = "pillow" },
     { name = "playwright" },
@@ -137,6 +138,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.116.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "json-repair", specifier = ">=0.44.1" },
+    { name = "jsonref", specifier = ">=1.1.0" },
     { name = "openai", specifier = ">=1.76.0" },
     { name = "pillow", specifier = ">=11.2.1" },
     { name = "playwright", specifier = ">=1.51.0" },
@@ -514,6 +516,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a8/6b/ed6e92efc5acfbc9c35ccae1676b70e4adb1552421e64f838c2a3f097d9a/json_repair-0.44.1.tar.gz", hash = "sha256:1130eb9733b868dac1340b43cb2effebb519ae6d52dd2d0728c6cca517f1e0b4", size = 32886, upload_time = "2025-04-30T16:09:38.54Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/82/b4/3cbd27a3240b2962c3b87bbb1c20eb6c56e5b26cde61f141f86ca98e2f68/json_repair-0.44.1-py3-none-any.whl", hash = "sha256:51d82532c3b8263782a301eb7904c75dce5fee8c0d1aba490287fc0ab779ac50", size = 22478, upload_time = "2025-04-30T16:09:37.303Z" },
+]
+
+[[package]]
+name = "jsonref"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/0d/c1f3277e90ccdb50d33ed5ba1ec5b3f0a242ed8c1b1a85d3afeb68464dca/jsonref-1.1.0.tar.gz", hash = "sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552", size = 8814, upload_time = "2023-01-16T16:10:04.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/ec/e1db9922bceb168197a558a2b8c03a7963f1afe93517ddd3cf99f202f996/jsonref-1.1.0-py3-none-any.whl", hash = "sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9", size = 9425, upload_time = "2023-01-16T16:10:02.255Z" },
 ]
 
 [[package]]

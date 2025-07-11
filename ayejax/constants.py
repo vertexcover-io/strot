@@ -1,7 +1,7 @@
 EXCLUDE_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "collect"}
 """URL filtering keywords"""
 
-PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION = """\
+ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION = """\
 Your task is to precisely extract keywords from the provided screenshot of a webpage that are directly relevant to the user's data scraping requirement. These keywords should represent the actual data being scraped and must exactly match those visible in the screenshot.
 
 Strictly adhere to the following instructions:
@@ -29,7 +29,7 @@ Provide your response in JSON matching this schema:
 
 User Requirement: %s"""
 
-PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION = """\
+ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION = """\
 Your task is to precisely extract keywords from the provided screenshot of a webpage that are directly relevant to the user's data scraping requirement. These keywords should represent the actual data being scraped and must exactly match those visible in the screenshot.
 
 Strictly adhere to the following instructions:
@@ -53,6 +53,93 @@ Provide your response in JSON matching this schema:
 }
 
 User Requirement: %s"""
+
+EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE = """\
+Your task is to generate robust Python code that extracts and transforms data from an API response into the specified schema format.
+
+## Requirements:
+1. **Parse the API response** (JSON, HTML, XML, or plain text)
+2. **Extract relevant data** matching the schema fields
+3. **Handle edge cases** (missing fields, different data types, nested structures)
+4. **Return clean, structured data** that matches the schema exactly
+
+## Code Structure:
+```python
+import json
+import re
+from typing import Any, Dict, List, Optional
+from bs4 import BeautifulSoup  # if HTML parsing needed
+
+def extract_data(response: str):
+    \"\"\"
+    Extract and transform API response data to match the target schema.
+
+    Args:
+        response: Raw API response as string
+
+    Returns:
+        Structured data matching the schema
+    \"\"\"
+    try:
+        # Parse the response (adapt based on response format)
+        if response.strip().startswith('{') or response.strip().startswith('['):
+            data = json.loads(response)
+        elif '<html' in response.lower() or '<div' in response.lower():
+            soup = BeautifulSoup(response, 'html.parser')
+            # Extract from HTML
+        else:
+            # Handle plain text or other formats
+            pass
+
+        # Extract and transform data according to schema
+        result = {}
+
+        # CRITICAL: Analyze the ENTIRE response structure
+        # Look for data in ALL nested objects and arrays
+        # Even if obvious fields are empty, extract from related objects
+
+        # TODO: Implement extraction logic based on schema fields
+        # Example patterns:
+        # - If reviews=[] but product data exists, extract product info
+        # - Look in summary, metadata, nested objects
+        # - Map ANY available data to schema fields creatively
+
+        return result
+
+    except Exception as e:
+        # Return empty structure matching schema on error
+        return {}
+```
+
+## Important Guidelines:
+- **Analyze the ENTIRE response structure** - don't just focus on obvious field names
+- **Look for data in nested objects** (e.g., product info, summary, metadata)
+- **Extract available data even if some arrays are empty** (e.g., if reviews=[] but product data exists)
+- **Map schema fields to ANY relevant data in the response** - be creative with field mapping
+- **Handle missing or null values** gracefully with defaults
+- **Use appropriate parsing libraries** (json, BeautifulSoup, re)
+- **Return data types that match the schema** (strings, numbers, lists, etc.)
+- **Include error handling** to prevent crashes
+- **Extract arrays/lists** when schema expects multiple items
+- **Clean and normalize text** (strip whitespace, handle encoding)
+- **NEVER return empty results if ANY extractable data exists** in the response
+
+## Schema (target output format):
+%s
+
+## API Response (input data):
+%s
+
+## Critical Analysis Instructions:
+1. **EXAMINE THE FULL RESPONSE STRUCTURE** - Don't stop at empty arrays
+2. **IDENTIFY ALL DATA SOURCES** - product info, summary, metadata, nested objects
+3. **EXTRACT MAXIMUM AVAILABLE DATA** - Even if primary fields are empty, use related data
+4. **BE CREATIVE WITH FIELD MAPPING** - Map any relevant data to schema fields
+
+For the provided response, if reviews=[] but product data exists with ratings, descriptions, etc., extract that information and map it appropriately to the schema fields.
+
+Generate production-ready Python code that reliably extracts ALL AVAILABLE data from this response.
+"""
 
 HEADERS_TO_IGNORE = {
     "accept-encoding",

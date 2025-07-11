@@ -222,13 +222,14 @@ async def execute_api_request(execution_state_id: UUID) -> dict[str, str]:  # no
                 timeout=settings.EXTERNAL_API_REQUEST_TIMEOUT,
             )
             response.raise_for_status()
+            response_text = response.text
 
-            if execution_state.last_response and (execution_state.last_response == response.text):
+            if execution_state.last_response and (execution_state.last_response == response_text):
                 return {"error": "No more pagination"}
 
             if output.pagination_strategy:
                 execution_state.request_number += 1
-                execution_state.last_response = response.text
+                execution_state.last_response = response_text
 
             execution_state.last_executed_at = datetime.now(timezone.utc)
             execution_state.output.usage_count += 1
@@ -241,4 +242,10 @@ async def execute_api_request(execution_state_id: UUID) -> dict[str, str]:  # no
             return {"error": f"External API request failed: {e!s}"}
 
         else:
-            return {execution_state.output.tag: response.text}
+            if output.schema_extractor_code:
+                namespace = {}
+                exec(output.schema_extractor_code, namespace)  # noqa: S102
+                if data := namespace["extract_data"](response_text):
+                    return {execution_state.output.tag: data}
+
+            return {execution_state.output.tag: response_text}
