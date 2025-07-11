@@ -94,15 +94,8 @@ def extract_data(response: str):
         # Extract and transform data according to schema
         result = {}
 
-        # CRITICAL: Analyze the ENTIRE response structure
-        # Look for data in ALL nested objects and arrays
-        # Even if obvious fields are empty, extract from related objects
-
         # TODO: Implement extraction logic based on schema fields
-        # Example patterns:
-        # - If reviews=[] but product data exists, extract product info
-        # - Look in summary, metadata, nested objects
-        # - Map ANY available data to schema fields creatively
+        # Only extract data that matches the schema requirements
 
         return result
 
@@ -112,17 +105,15 @@ def extract_data(response: str):
 ```
 
 ## Important Guidelines:
-- **Analyze the ENTIRE response structure** - don't just focus on obvious field names
-- **Look for data in nested objects** (e.g., product info, summary, metadata)
-- **Extract available data even if some arrays are empty** (e.g., if reviews=[] but product data exists)
-- **Map schema fields to ANY relevant data in the response** - be creative with field mapping
-- **Handle missing or null values** gracefully with defaults
+- **Parse the response format correctly** (JSON, HTML, XML, plain text)
+- **Map response fields to schema fields** where there's a clear match
+- **Handle missing or null values** gracefully
 - **Use appropriate parsing libraries** (json, BeautifulSoup, re)
 - **Return data types that match the schema** (strings, numbers, lists, etc.)
 - **Include error handling** to prevent crashes
 - **Extract arrays/lists** when schema expects multiple items
 - **Clean and normalize text** (strip whitespace, handle encoding)
-- **NEVER return empty results if ANY extractable data exists** in the response
+- **Only return data that is actually present and relevant** in the response
 
 ## Schema (target output format):
 %s
@@ -130,15 +121,7 @@ def extract_data(response: str):
 ## API Response (input data):
 %s
 
-## Critical Analysis Instructions:
-1. **EXAMINE THE FULL RESPONSE STRUCTURE** - Don't stop at empty arrays
-2. **IDENTIFY ALL DATA SOURCES** - product info, summary, metadata, nested objects
-3. **EXTRACT MAXIMUM AVAILABLE DATA** - Even if primary fields are empty, use related data
-4. **BE CREATIVE WITH FIELD MAPPING** - Map any relevant data to schema fields
-
-For the provided response, if reviews=[] but product data exists with ratings, descriptions, etc., extract that information and map it appropriately to the schema fields.
-
-Generate production-ready Python code that reliably extracts ALL AVAILABLE data from this response.
+Generate production-ready Python code that extracts the relevant data from this response based on the provided schema.
 """
 
 HEADERS_TO_IGNORE = {
