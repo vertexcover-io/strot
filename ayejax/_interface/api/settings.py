@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         name = info.data["POSTGRES_DB"]
         return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
 
-    SESSION_EXECUTE_REQUEST_TIMEOUT: int = 30
+    EXTERNAL_API_REQUEST_TIMEOUT: int = 30
 
 
 settings = Settings()

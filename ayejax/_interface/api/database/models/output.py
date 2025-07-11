@@ -18,7 +18,7 @@ class Output(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
 
-    sessions = relationship("Session", back_populates="output")
+    execution_states = relationship("ExecutionState", back_populates="output")
 
     __table_args__ = (
         UniqueConstraint("url", "tag", name="outputs_url_tag_unique"),
