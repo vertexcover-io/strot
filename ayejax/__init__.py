@@ -167,10 +167,6 @@ async def analyze(
     return await run(browser)
 
 
-analyse = analyze  # Alias for :func:`analyze`
-find = analyze  # Alias for :func:`analyze` (backward compatible)
-
-
 class _JSContext:
     """
     Context manager for JavaScript evaluation.
