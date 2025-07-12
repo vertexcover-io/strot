@@ -248,4 +248,6 @@ async def execute_api_request(execution_state_id: UUID) -> dict[str, str]:  # no
                 if data := namespace["extract_data"](response_text):
                     return {execution_state.output.tag: data}
 
+                return {"error": "No more pagination"}
+
             return {execution_state.output.tag: response_text}
