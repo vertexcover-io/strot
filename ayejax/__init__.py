@@ -191,6 +191,7 @@ class _JSContext:
 
         try:
             self._logger.info("page", action="eval", expr=expr, args=args)
+            await self._page.wait_for_load_state("domcontentloaded")
             result = await self._page.evaluate(expr, args)
             await self._page.wait_for_load_state("domcontentloaded")
         except Exception as e:
@@ -206,6 +207,45 @@ class _JSContext:
 
     async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
         return await self._eval("([direction]) => scrollToNextView({ direction })", [direction])
+
+    async def scroll_last_similar_element_into_view(self, keywords: list[str]) -> bool:
+        texts_in_view_to_last_sibling_selectors: dict[str, str] = await self._eval(
+            """
+            () => {
+                const textsInViewToLastSiblingSelector = {};
+                const mapping = mapLastVisibleSiblings(1.25);
+                mapping.forEach((lastSiblingElement, elementInView) => {
+                    textsInViewToLastSiblingSelector[elementInView.textContent.trim()] = generateCSSSelector(lastSiblingElement);
+                });
+                return textsInViewToLastSiblingSelector;
+            }
+            """
+        )
+
+        # Sort texts by length (longer first) to prioritize longer matching texts
+        for text, selector in sorted(
+            texts_in_view_to_last_sibling_selectors.items(),
+            key=lambda x: len(x[0]),
+            reverse=True,
+        ):
+            self._logger.info("scroll-to-last-visible-sibling", action="matching", text=text)
+
+            best_match_ratio = 0.0
+            for keyword in sorted(keywords, key=len, reverse=True):
+                match_ratio = keyword_match_ratio([keyword], text)
+                self._logger.info(
+                    "scroll-to-last-visible-sibling", action="matching", match_ratio=match_ratio, keyword=keyword
+                )
+
+                if match_ratio > best_match_ratio:
+                    best_match_ratio = match_ratio
+
+            if best_match_ratio:
+                self._logger.info("scroll-to-last-visible-sibling", text=text, selector=selector)
+                await self._page.locator(selector).scroll_into_view_if_needed()
+                return True
+
+        return False
 
 
 class _continue: ...
@@ -455,6 +495,9 @@ class _RunContext:
             matching_response = self.perform_matching(keywords)
             if matching_response:
                 return matching_response
+
+            if await self._js_ctx.scroll_last_similar_element_into_view(keywords):
+                return _continue
 
         should_continue = False
         if popup_element_point := result.popup_element_point:
