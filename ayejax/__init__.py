@@ -505,9 +505,20 @@ class _RunContext:
             should_continue = True
 
         if navigation_element_point := result.navigation_element_point:
+            position_before = await self._page.evaluate("() => ({ scrollX: window.scrollX, scrollY: window.scrollY })")
             await self._js_ctx.click_element_at_point(navigation_element_point.x, navigation_element_point.y)
-            self._section_navigated = True
-            should_continue = True
+            position_after = await self._page.evaluate("() => ({ scrollX: window.scrollX, scrollY: window.scrollY })")
+
+            if self._section_navigated:
+                should_continue = True
+            elif (
+                position_before["scrollX"] != position_after["scrollX"]
+                or position_before["scrollY"] != position_after["scrollY"]
+            ):
+                self._section_navigated = True
+                should_continue = True
+            else:
+                should_continue = False
 
         return _continue if should_continue else None
 
