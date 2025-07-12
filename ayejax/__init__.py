@@ -1,7 +1,9 @@
+import re
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from json import dumps as json_dumps
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, overload
 from urllib.parse import parse_qsl, urlparse
 
 from playwright.async_api import (
@@ -13,16 +15,19 @@ from playwright.async_api import (
     Response as PageResponse,
 )
 
-from . import llm, pagination
-from .constants import (
+from ayejax import llm, pagination
+from ayejax.adapter import SchemaAdapter, drop_titles
+from ayejax.constants import (
+    ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION,
+    ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION,
     EXCLUDE_KEYWORDS,
+    EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE,
     HEADERS_TO_IGNORE,
-    PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION,
-    PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION,
 )
-from .helpers import keyword_match_ratio
-from .logging import LoggerType
-from .types import (
+from ayejax.helpers import keyword_match_ratio
+from ayejax.logging import LoggerType
+from ayejax.tag import Tag, TagLiteral
+from ayejax.types import (
     AnalysisResult,
     Metadata,
     Output,
@@ -30,7 +35,7 @@ from .types import (
     Response,
 )
 
-__all__ = ("create_browser", "find")
+__all__ = ("analyse", "analyze", "create_browser", "find")
 
 
 @asynccontextmanager
@@ -46,13 +51,18 @@ async def create_browser(mode: Literal["headed", "headless"]):
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=mode == "headless")
-        yield browser
-        await browser.close()
+        try:
+            yield browser
+        finally:
+            with suppress(Exception):
+                await browser.close()
 
 
-async def find(
+@overload
+async def analyze(
     url: str,
-    query: str,
+    tag: Tag,
+    /,
     *,
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
@@ -60,27 +70,102 @@ async def find(
     page_load_timeout: float | None = None,
 ) -> tuple[Output | None, Metadata]:
     """
-    Run the finder on the given URL.
+    Run analysis on the given URL using the given tag.
 
     Args:
-        url: The URL to run the finder on.
-        query: The query to run the finder with.
+        url: The target web page URL to analyze.
+        tag: The kind of information to look for (e.g. reviews).
         browser: The browser to use.
         logger: The logger to use.
         max_view_scrolls: The maximum number of view scrolls to perform before exiting.
         page_load_timeout: The timeout for waiting for the page to load.
 
     Returns:
-        The output of the finder.
+        Tuple of output and metadata.
     """
+
+
+@overload
+async def analyze(
+    url: str,
+    tag: TagLiteral,
+    /,
+    *,
+    browser: Browser | Literal["headless", "headed"] = "headed",
+    logger: LoggerType,
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    """
+    Run analysis on the given URL using the given tag.
+
+    Args:
+        url: The target web page URL to analyze.
+        tag: The kind of information to look for (e.g. reviews).
+        browser: The browser to use.
+        logger: The logger to use.
+        max_view_scrolls: The maximum number of view scrolls to perform before exiting.
+        page_load_timeout: The timeout for waiting for the page to load.
+
+    Returns:
+        Tuple of output and metadata.
+    """
+
+
+@overload
+async def analyze(
+    url: str,
+    query: str,
+    /,
+    *,
+    browser: Browser | Literal["headless", "headed"] = "headed",
+    logger: LoggerType,
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    """
+    Run analysis on the given URL using the given query.
+
+    Args:
+        url: The target web page URL to analyze.
+        query: The query to use for analysis.
+        browser: The browser to use.
+        logger: The logger to use.
+        max_view_scrolls: The maximum number of view scrolls to perform before exiting.
+        page_load_timeout: The timeout for waiting for the page to load.
+
+    Returns:
+        Tuple of output and metadata.
+    """
+
+
+async def analyze(
+    url: str,
+    query_or_tag: str | Tag | TagLiteral,
+    /,
+    *,
+    browser: Browser | Literal["headless", "headed"] = "headed",
+    logger: LoggerType,
+    max_view_scrolls: int = 30,
+    page_load_timeout: float | None = None,
+) -> tuple[Output | None, Metadata]:
+    output_schema_adapter = None
+    if isinstance(query_or_tag, Tag):
+        query = query_or_tag.value.query
+        output_schema_adapter = query_or_tag.value.output_schema_adapter
+    elif query_or_tag in Tag.__members__:
+        query = Tag[query_or_tag].value.query
+        output_schema_adapter = Tag[query_or_tag].value.output_schema_adapter
+    else:
+        query = query_or_tag
 
     async def run(browser: Browser):
         browser_ctx = await browser.new_context(bypass_csp=True)
         page = await browser_ctx.new_page()
         try:
-            run_ctx = _RunContext(query=query, page=page, logger=logger)
+            run_ctx = _RunContext(page=page, logger=logger)
             await run_ctx.load_url(url, page_load_timeout)
-            return await run_ctx(max_view_scrolls)
+            return await run_ctx(query, output_schema_adapter, max_view_scrolls)
         finally:
             await browser_ctx.close()
 
@@ -92,6 +177,10 @@ async def find(
 
 
 class _JSContext:
+    """
+    Context manager for JavaScript evaluation.
+    """
+
     def __init__(self, page: Page, logger: LoggerType) -> None:
         self._page = page
         self._logger = logger
@@ -102,6 +191,7 @@ class _JSContext:
 
         try:
             self._logger.info("page", action="eval", expr=expr, args=args)
+            await self._page.wait_for_load_state("domcontentloaded")
             result = await self._page.evaluate(expr, args)
             await self._page.wait_for_load_state("domcontentloaded")
         except Exception as e:
@@ -118,6 +208,45 @@ class _JSContext:
     async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
         return await self._eval("([direction]) => scrollToNextView({ direction })", [direction])
 
+    async def scroll_last_similar_element_into_view(self, keywords: list[str]) -> bool:
+        texts_in_view_to_last_sibling_selectors: dict[str, str] = await self._eval(
+            """
+            () => {
+                const textsInViewToLastSiblingSelector = {};
+                const mapping = mapLastVisibleSiblings(1.25);
+                mapping.forEach((lastSiblingElement, elementInView) => {
+                    textsInViewToLastSiblingSelector[elementInView.textContent.trim()] = generateCSSSelector(lastSiblingElement);
+                });
+                return textsInViewToLastSiblingSelector;
+            }
+            """
+        )
+
+        # Sort texts by length (longer first) to prioritize longer matching texts
+        for text, selector in sorted(
+            texts_in_view_to_last_sibling_selectors.items(),
+            key=lambda x: len(x[0]),
+            reverse=True,
+        ):
+            self._logger.info("scroll-to-last-visible-sibling", action="matching", text=text)
+
+            best_match_ratio = 0.0
+            for keyword in sorted(keywords, key=len, reverse=True):
+                match_ratio = keyword_match_ratio([keyword], text)
+                self._logger.info(
+                    "scroll-to-last-visible-sibling", action="matching", match_ratio=match_ratio, keyword=keyword
+                )
+
+                if match_ratio > best_match_ratio:
+                    best_match_ratio = match_ratio
+
+            if best_match_ratio:
+                self._logger.info("scroll-to-last-visible-sibling", text=text, selector=selector)
+                await self._page.locator(selector).scroll_into_view_if_needed()
+                return True
+
+        return False
+
 
 class _continue: ...
 
@@ -126,11 +255,9 @@ class _RunContext:
     def __init__(
         self,
         page: Page,
-        query: str,
         logger: LoggerType,
     ) -> None:
         self._page = page
-        self._query = query
         self._logger = logger
         self._llm_client = llm.LLMClient(
             provider="anthropic",
@@ -185,13 +312,13 @@ class _RunContext:
         except Exception as exc:
             self._logger.error("on-response", action="capture", url=response.request.url, exception=exc)
 
-    async def perform_analysis(self) -> AnalysisResult | None:
+    async def perform_analysis(self, query: str) -> AnalysisResult | None:
         try:
             screenshot = await self._page.screenshot(type="png")
             if not self._section_navigated:
-                prompt = PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION % self._query
+                prompt = ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION % query
             else:
-                prompt = PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION % self._query
+                prompt = ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION % query
 
             llm_input = llm.LLMInput(prompt=prompt, image=screenshot)
             completion = self._llm_client.get_completion(llm_input, json=True)
@@ -216,7 +343,7 @@ class _RunContext:
 
             return response
 
-    async def determine_strategy(self, response: Response) -> pagination.StrategyInfo | None:  # noqa: C901
+    async def determine_strategy(self, response: Response, query: str) -> pagination.StrategyInfo | None:  # noqa: C901
         request = response.request
 
         def get_key(candidates: set[str], entries: dict[str, Any]) -> str | None:
@@ -254,7 +381,7 @@ class _RunContext:
                     current_cursor_key=cursor_key,
                 )
 
-                analysis_result = await self.perform_analysis()
+                analysis_result = await self.perform_analysis(query)
                 if not analysis_result:
                     max_collection_attempts -= 1
                     self._logger.warning(
@@ -369,19 +496,68 @@ class _RunContext:
             if matching_response:
                 return matching_response
 
+            if await self._js_ctx.scroll_last_similar_element_into_view(keywords):
+                return _continue
+
         should_continue = False
         if popup_element_point := result.popup_element_point:
-            await self._js_ctx.click_element_at_point(popup_element_point["x"], popup_element_point["y"])
+            await self._js_ctx.click_element_at_point(popup_element_point.x, popup_element_point.y)
             should_continue = True
 
         if navigation_element_point := result.navigation_element_point:
-            await self._js_ctx.click_element_at_point(navigation_element_point["x"], navigation_element_point["y"])
-            self._section_navigated = True
-            should_continue = True
+            position_before = await self._page.evaluate("() => ({ scrollX: window.scrollX, scrollY: window.scrollY })")
+            await self._js_ctx.click_element_at_point(navigation_element_point.x, navigation_element_point.y)
+            position_after = await self._page.evaluate("() => ({ scrollX: window.scrollX, scrollY: window.scrollY })")
+
+            if self._section_navigated:
+                should_continue = True
+            elif (
+                position_before["scrollX"] != position_after["scrollX"]
+                or position_before["scrollY"] != position_after["scrollY"]
+            ):
+                self._section_navigated = True
+                should_continue = True
+            else:
+                should_continue = False
 
         return _continue if should_continue else None
 
-    async def __call__(self, max_view_scrolls: int) -> tuple[Output | None, Metadata]:
+    def generate_extraction_code(self, output_schema_adapter: SchemaAdapter, response_text: str) -> str | None:
+        formatted_output_schema = json_dumps(drop_titles(output_schema_adapter.schema), indent=2)
+        retries = 3
+        while retries:
+            try:
+                completion = self._llm_client.get_completion(
+                    llm.LLMInput(
+                        prompt=EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE % (formatted_output_schema, response_text)
+                    )
+                )
+                self._completions.append(completion)
+                # Pattern to match code fences with optional language specification
+                # Matches ```python, ```py, or just ``` followed by code and ending ```
+                pattern = r"```(?:python|py)?\s*\n(.*?)\n```"
+
+                matches = re.findall(pattern, completion.value, re.DOTALL)
+                if not matches:
+                    return None
+
+                code = matches[0].strip()
+                namespace = {}
+                exec(code, namespace)  # noqa: S102
+                print(output_schema_adapter.validate_python(namespace["extract_data"](response_text)))
+            except Exception:
+                retries -= 1
+                if retries <= 0:
+                    raise
+            else:
+                return code
+
+    async def __call__(  # noqa: C901
+        self,
+        query: str,
+        output_schema_adapter: SchemaAdapter | None = None,
+        max_view_scrolls: int = 30,
+    ) -> tuple[Output | None, Metadata]:
         analysis_retry_count = 5
         main_loop_iteration = 0
 
@@ -397,7 +573,7 @@ class _RunContext:
                 captured_responses=len(self._captured_responses),
             )
 
-            analysis_result = await self.perform_analysis()
+            analysis_result = await self.perform_analysis(query)
             if not analysis_result:
                 analysis_retry_count -= 1
                 self._logger.warning("main-loop", action="analysis-failed", retry_count=analysis_retry_count)
@@ -419,7 +595,7 @@ class _RunContext:
             try:
                 response = await self.process_analysis_result(analysis_result)
             except Exception as e:
-                self._logger.error("main-loop", action="process-analysis-error", error=str(e))
+                self._logger.error("main-loop", action="process-analysis-error", exception=e)
                 continue
 
             if isinstance(response, Response):
@@ -432,8 +608,11 @@ class _RunContext:
 
                 output = Output(
                     request=response.request,
-                    pagination_strategy=await self.determine_strategy(response),
+                    pagination_strategy=await self.determine_strategy(response, query),
                 )
+                if output_schema_adapter:
+                    output.schema_extractor_code = self.generate_extraction_code(output_schema_adapter, response.value)
+
                 metadata = Metadata(
                     extracted_keywords=analysis_result.keywords,
                     completions=self._completions,

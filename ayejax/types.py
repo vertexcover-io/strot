@@ -23,10 +23,15 @@ class PydanticModel(BaseModel):
         path.write_text(self.model_dump_json(indent=3, exclude_none=True))
 
 
+class Point(BaseModel):
+    x: float
+    y: float
+
+
 class AnalysisResult(PydanticModel):
     keywords: list[str] = []
-    navigation_element_point: dict[str, float] | None = None
-    popup_element_point: dict[str, float] | None = None
+    navigation_element_point: Point | None = None
+    popup_element_point: Point | None = None
 
 
 class Request(PydanticModel):
@@ -50,3 +55,4 @@ class Metadata(PydanticModel):
 class Output(PydanticModel):
     request: Request
     pagination_strategy: StrategyInfo | None = None
+    schema_extractor_code: str | None = None
