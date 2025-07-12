@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from os import getenv
-from typing import Literal, Protocol
+from typing import Literal
 
 import anthropic
 import openai
@@ -68,32 +68,6 @@ class LLMCompletion(BaseModel):
         return self.input_tokens / 1_000_000 * cost_per_1m_input + self.output_tokens / 1_000_000 * cost_per_1m_output
 
 
-class LLMClientInterface(Protocol):
-    """
-    Protocol for LLM client implementations.
-    """
-
-    @property
-    def provider(self) -> LLMProvider:
-        """LLM provider."""
-
-    @property
-    def model(self) -> str:
-        """LLM model."""
-
-    def get_completion(self, input: LLMInput, *, json: bool = False) -> LLMCompletion:
-        """
-        Get LLM completion.
-
-        Args:
-            input: Input to the LLM: text prompt and optional image bytes.
-            json: Whether to return JSON completion (default: False)
-
-        Returns:
-            LLMCompletion: LLM completion.
-        """
-
-
 class LLMClient:
     def __init__(
         self,
@@ -109,10 +83,10 @@ class LLMClient:
 
         self.logger.info("init-llm", provider=provider, model=model)
 
-        client: anthropic.Client | openai.Client
+        client: anthropic.AsyncClient | openai.AsyncClient
         match self.__provider:
             case "anthropic":
-                client = anthropic.Client(api_key=api_key)
+                client = anthropic.AsyncClient(api_key=api_key)
             case "openai" | "groq" | "open-router":
                 base_url = None
                 if self.__provider == "groq":
@@ -122,7 +96,7 @@ class LLMClient:
                     base_url = "https://openrouter.ai/api/v1/"
                     api_key = api_key or getenv("OPENROUTER_API_KEY")
 
-                client = openai.Client(api_key=api_key, base_url=base_url)
+                client = openai.AsyncClient(api_key=api_key, base_url=base_url)
             case _:
                 raise ValueError(f"Unsupported provider: {self.__provider}")
 
@@ -136,7 +110,7 @@ class LLMClient:
     def model(self) -> str:
         return self.__model
 
-    def get_completion(self, input: LLMInput, *, json: bool = False) -> LLMCompletion:
+    async def get_completion(self, input: LLMInput, *, json: bool = False) -> LLMCompletion:
         """
         Get LLM completion.
 
@@ -149,14 +123,14 @@ class LLMClient:
         """
         self.logger.info("llm-completion", json=json)
         if self.provider == "anthropic":
-            completion = self.__request_anthropic_client(input, json=json)
+            completion = await self.__request_anthropic_client(input, json=json)
         else:
-            completion = self.__request_openai_client(input, json=json)
+            completion = await self.__request_openai_client(input, json=json)
 
         self.logger.info("llm-completion", input_tokens=completion.input_tokens, output_tokens=completion.output_tokens)
         return completion
 
-    def __request_openai_client(self, input: LLMInput, json: bool) -> LLMCompletion:
+    async def __request_openai_client(self, input: LLMInput, json: bool) -> LLMCompletion:
         """
         Request completion from OpenAI client.
 
@@ -187,7 +161,7 @@ class LLMClient:
         if json:
             response_format = {"type": "json_object"}
 
-        chat_completion = self.__client.chat.completions.create(
+        chat_completion = await self.__client.chat.completions.create(
             model=self.model, messages=messages, response_format=response_format
         )
 
@@ -200,7 +174,7 @@ class LLMClient:
             model=self.model,
         )
 
-    def __request_anthropic_client(self, input: LLMInput, json: bool) -> LLMCompletion:
+    async def __request_anthropic_client(self, input: LLMInput, json: bool) -> LLMCompletion:
         """
         Request completion from Anthropic client.
 
@@ -234,7 +208,7 @@ class LLMClient:
         if json:
             messages.append({"role": "assistant", "content": "```json"})
 
-        ai_message = self.__client.beta.messages.create(
+        ai_message = await self.__client.beta.messages.create(
             model=self.model, messages=messages, max_tokens=8092, betas=["computer-use-2025-01-24"]
         )
 

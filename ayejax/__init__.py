@@ -321,7 +321,7 @@ class _RunContext:
                 prompt = ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION % query
 
             llm_input = llm.LLMInput(prompt=prompt, image=screenshot)
-            completion = self._llm_client.get_completion(llm_input, json=True)
+            completion = await self._llm_client.get_completion(llm_input, json=True)
             self._logger.info("analysis", action="llm-completion", completion=completion.value)
             self._completions.append(completion)
         except Exception as exc:
@@ -522,12 +522,12 @@ class _RunContext:
 
         return _continue if should_continue else None
 
-    def generate_extraction_code(self, output_schema_adapter: SchemaAdapter, response_text: str) -> str | None:
+    async def generate_extraction_code(self, output_schema_adapter: SchemaAdapter, response_text: str) -> str | None:
         formatted_output_schema = json_dumps(drop_titles(output_schema_adapter.schema), indent=2)
         retries = 3
         while retries:
             try:
-                completion = self._llm_client.get_completion(
+                completion = await self._llm_client.get_completion(
                     llm.LLMInput(
                         prompt=EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE % (formatted_output_schema, response_text)
                     )
@@ -611,7 +611,9 @@ class _RunContext:
                     pagination_strategy=await self.determine_strategy(response, query),
                 )
                 if output_schema_adapter:
-                    output.schema_extractor_code = self.generate_extraction_code(output_schema_adapter, response.value)
+                    output.schema_extractor_code = await self.generate_extraction_code(
+                        output_schema_adapter, response.value
+                    )
 
                 metadata = Metadata(
                     extracted_keywords=analysis_result.keywords,
