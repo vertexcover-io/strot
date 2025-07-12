@@ -28,8 +28,7 @@ class LimitOffsetInfo(BaseModel):
     offset_key: str
 
     def update_entries(self, entries: dict[str, Any], request_number: int):
-        if request_number > 1:
-            entries[self.offset_key] = int(entries[self.limit_key]) * request_number
+        entries[self.offset_key] = int(entries[self.limit_key]) * (request_number - 1)
 
 
 class NextCursorInfo(BaseModel):
