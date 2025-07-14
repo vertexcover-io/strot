@@ -6,7 +6,8 @@ from cyclopts import App, Parameter, validators
 import ayejax
 from ayejax import TagLiteral
 from ayejax.helpers import normalize_filename
-from ayejax.logging import FileHandlerConfig, get_logger, setup_logging
+from ayejax.logging import get_logger, setup_logging
+from ayejax.logging.handlers import FileHandlerConfig
 
 setup_logging()
 
@@ -27,7 +28,7 @@ async def main(
         tag: Tag to use
     """
     filename = normalize_filename(url)
-    logger = get_logger(filename, file_handler_config=FileHandlerConfig(directory="."))
+    logger = get_logger(filename, FileHandlerConfig(directory="."))
 
     output, metadata = await ayejax.analyze(url, tag, logger=logger)
     if output is None:

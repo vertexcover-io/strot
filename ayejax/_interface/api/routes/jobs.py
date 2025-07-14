@@ -3,10 +3,10 @@ Job routes for creating new API patterns
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
+import boto3
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from playwright.async_api import Browser
@@ -19,14 +19,20 @@ from ayejax._interface.api.database import DBSessionDependency, sessionmanager
 from ayejax._interface.api.database.models.job import Job
 from ayejax._interface.api.database.models.output import Output
 from ayejax._interface.api.settings import settings
-from ayejax.job_logging import with_job_logger
+from ayejax.logging import get_logger
+from ayejax.logging.handlers import S3HandlerConfig
 from ayejax.pagination.strategy import LimitOffsetInfo, NextCursorInfo, PageOffsetInfo, PageOnlyInfo
 from ayejax.tag import TagLiteral
 from ayejax.types import Output as AyejaxOutput
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 
-LOG_DIR = Path.home() / ".ayejax" / "logs" / "api"
+
+boto3_session = boto3.Session(
+    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    region_name=settings.AWS_REGION,
+)
 
 
 class CreateJobRequest(BaseModel):
@@ -139,9 +145,17 @@ async def create_output(request: CreateJobRequest, output: AyejaxOutput, db: DBS
     return output_id
 
 
-@with_job_logger("job_id")
-async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: Browser, logger=None):
+async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: Browser):
     """Background task to process job request"""
+
+    s3_handler_config = S3HandlerConfig(
+        boto3_session=boto3_session,
+        bucket_name=settings.AWS_S3_LOG_BUCKET,
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+    )
+
+    logger = get_logger(f"job-{job_id!s}", s3_handler_config, job_id=str(job_id))
+
     async with sessionmanager.session() as db:
         try:
             logger.info("Starting job analysis", url=str(request.url), tag=request.tag)

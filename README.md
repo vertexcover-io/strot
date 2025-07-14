@@ -61,20 +61,17 @@ Set your Anthropic API key
 export ANTHROPIC_API_KEY=<YOUR_API_KEY>
 ```
 
-Start postgres using docker-compose and serve the API
+Start postgres and minio services locally and serve the API
 
 ```bash
-docker compose up -d
-alembic upgrade head
-ayejax serve
+docker-compose up -d
+AYEJAX_ENV=local AYEJAX_API_KEY=<YOUR_API_KEY> ANTHROPIC_API_KEY=<YOUR_API_KEY> uv run ayejax serve
 ```
 
-Or, If you want to connect to a different postgres instance
+Or, Connect to a different postgres and s3-compatible storage services
 
 ```bash
-export POSTGRES_USER=... POSTGRES_PASSWORD=... POSTGRES_DB=... POSTGRES_HOST=... POSTGRES_PORT=...
-alembic upgrade head
-ayejax serve
+AYEJAX_ENV=prod AYEJAX_API_KEY=<YOUR_API_KEY> ANTHROPIC_API_KEY=<YOUR_API_KEY> AYEJAX_POSTGRES_USER=... AYEJAX_POSTGRES_PASSWORD=... AYEJAX_POSTGRES_DB=... AYEJAX_POSTGRES_HOST=... AYEJAX_POSTGRES_PORT=... AYEJAX_AWS_ACCESS_KEY_ID=... AYEJAX_AWS_SECRET_ACCESS_KEY=... AYEJAX_AWS_REGION=... AYEJAX_AWS_S3_LOG_BUCKET=... AYEJAX_AWS_S3_ENDPOINT_URL=... uv run ayejax serve
 ```
 
 ### Library
