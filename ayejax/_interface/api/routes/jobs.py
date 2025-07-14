@@ -21,6 +21,7 @@ from ayejax._interface.api.database.models.execution_state import ExecutionState
 from ayejax._interface.api.database.models.job import Job
 from ayejax._interface.api.database.models.output import Output
 from ayejax._interface.api.settings import settings
+from ayejax.job_logging import with_job_logger
 from ayejax.logging import FileHandlerConfig, get_logger
 from ayejax.pagination.strategy import NextCursorInfo
 from ayejax.tag import TagLiteral
@@ -139,28 +140,35 @@ async def create_execution_state(request: CreateJobRequest, output: AyejaxOutput
     return execution_state_id
 
 
-async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: Browser):
+@with_job_logger("job_id")
+async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: Browser, logger=None):
     """Background task to process job request"""
-    logger = get_logger(f"job-{job_id!s}", file_handler_config=FileHandlerConfig(directory=LOG_DIR / "jobs"))
     async with sessionmanager.session() as db:
         try:
+            logger.info("Starting job analysis", url=str(request.url), tag=request.tag)
+            
+            # Use the job-aware logger for ayejax.analyze to capture ALL logs in S3
             output, metadata = await ayejax.analyze(str(request.url), request.tag, browser=browser, logger=logger)
 
             result = await db.execute(select(Job).where(Job.id == job_id))
             job = result.scalar_one_or_none()
             if not job:
+                logger.error("Job not found in database")
                 return
 
             job.completed_at = datetime.now(timezone.utc)
             job.analysis_metadata = metadata.model_dump() if metadata else None
 
             if output is not None:
+                logger.info("Creating execution state", has_output=True)
                 job.execution_state_id = await create_execution_state(request, output, db)
                 job.status = "ready"
                 job.message = "Output created successfully"
+                logger.info("Job completed successfully", status="ready")
             else:
                 job.status = "failed"
                 job.message = "No relevant request found"
+                logger.info("Job failed - no relevant request found", status="failed")
 
             await db.commit()
 

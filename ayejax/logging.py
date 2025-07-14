@@ -294,7 +294,7 @@ class JobLogManager:
             # Flush remaining logs
             await self._flush_job_logs(job_id)
             
-            # Complete multipart upload if using S3
+            # Complete job logging (cleanup) if using S3
             if hasattr(self.storage, 'complete_multipart_upload'):
                 await self.storage.complete_multipart_upload(
                     self.settings.log_bucket, job_id

@@ -8,17 +8,18 @@ from botocore.exceptions import ClientError
 
 from ayejax.logging import get_logger
 from .interface import LogStorageInterface
-from .state import StateStorageInterface, MultipartUploadState
+from .state import StateStorageInterface
 
 
 class S3LogStorage(LogStorageInterface):
-    """S3-compatible log storage implementation using multipart uploads."""
+    """S3-compatible log storage implementation using regular uploads."""
     
     def __init__(self, s3_client, state_storage: StateStorageInterface, logger=None):
         self.s3_client = s3_client
         self.state_storage = state_storage
         self.logger = logger or get_logger(__name__)
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._job_log_buffers = {}  # Store accumulated log data per job
     
     async def ensure_bucket_exists(self, bucket_name: str) -> bool:
         """Ensure the log bucket exists, create if necessary."""
@@ -46,50 +47,26 @@ class S3LogStorage(LogStorageInterface):
                 return False
     
     async def append_to_job_log(self, bucket: str, job_id: str, log_data: str) -> bool:
-        """Append log data to job's log file using multipart upload."""
+        """Append log data to job's log file using regular upload."""
         try:
-            # Get existing state
-            state = await self.state_storage.get_upload_state(job_id)
+            # Accumulate log data in memory buffer
+            if job_id not in self._job_log_buffers:
+                self._job_log_buffers[job_id] = ""
             
-            if state is None:
-                # Start new multipart upload
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None, 
-                    lambda: self.s3_client.create_multipart_upload(
-                        Bucket=bucket,
-                        Key=f"job-{job_id}.log",
-                        ContentType="text/plain"
-                    )
-                )
-                state = MultipartUploadState(
-                    upload_id=response['UploadId'],
-                    parts=[],
-                    created_at=datetime.utcnow(),
-                    last_updated=datetime.utcnow()
-                )
-                self.logger.debug(f"Started multipart upload for job {job_id}")
+            self._job_log_buffers[job_id] += log_data
             
-            # Upload new part
-            part_number = len(state.parts) + 1
-            response = await asyncio.get_event_loop().run_in_executor(
+            # Upload the complete log file (overwrites previous version)
+            await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.s3_client.upload_part(
+                lambda: self.s3_client.put_object(
                     Bucket=bucket,
                     Key=f"job-{job_id}.log",
-                    PartNumber=part_number,
-                    UploadId=state.upload_id,
-                    Body=log_data.encode('utf-8')
+                    Body=self._job_log_buffers[job_id].encode('utf-8'),
+                    ContentType="text/plain"
                 )
             )
             
-            # Update state
-            state.parts.append({
-                'ETag': response['ETag'],
-                'PartNumber': part_number
-            })
-            
-            await self.state_storage.save_upload_state(job_id, state)
-            self.logger.debug(f"Uploaded part {part_number} for job {job_id}")
+            self.logger.debug(f"Uploaded log for job {job_id} ({len(self._job_log_buffers[job_id])} bytes)")
             return True
             
         except Exception as e:
@@ -97,33 +74,18 @@ class S3LogStorage(LogStorageInterface):
             return False
     
     async def complete_multipart_upload(self, bucket: str, job_id: str) -> bool:
-        """Complete multipart upload for a job."""
+        """Complete job logging (cleanup buffer)."""
         try:
-            state = await self.state_storage.get_upload_state(job_id)
-            if state is None:
-                self.logger.warning(f"No upload state found for job {job_id}")
-                return False
+            # Clean up buffer to free memory
+            if job_id in self._job_log_buffers:
+                buffer_size = len(self._job_log_buffers[job_id])
+                del self._job_log_buffers[job_id]
+                self.logger.info(f"Completed job logging for {job_id} ({buffer_size} bytes)")
             
-            # Complete multipart upload
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.s3_client.complete_multipart_upload(
-                    Bucket=bucket,
-                    Key=f"job-{job_id}.log",
-                    UploadId=state.upload_id,
-                    MultipartUpload={
-                        "Parts": state.parts
-                    }
-                )
-            )
-            
-            # Clean up state
-            await self.state_storage.delete_upload_state(job_id)
-            self.logger.info(f"Completed multipart upload for job {job_id}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to complete upload for job {job_id}: {e}")
+            self.logger.error(f"Failed to complete job logging for {job_id}: {e}")
             return False
     
     async def get_job_log(self, bucket: str, job_id: str) -> str:
@@ -176,18 +138,19 @@ class S3LogStorage(LogStorageInterface):
             return False
     
     async def start_cleanup_task(self):
-        """Start background task for cleaning up stale uploads."""
+        """Start background task for cleaning up stale buffers."""
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
     
     async def _cleanup_loop(self):
-        """Background loop for cleaning up stale uploads."""
+        """Background loop for cleaning up stale buffers."""
         while True:
             try:
                 await asyncio.sleep(3600)  # Run every hour
-                cleaned = await self.state_storage.cleanup_stale_uploads(24)
-                if cleaned > 0:
-                    self.logger.info(f"Cleaned up {cleaned} stale uploads")
+                # Clean up any orphaned buffers (shouldn't happen normally)
+                buffer_count = len(self._job_log_buffers)
+                if buffer_count > 0:
+                    self.logger.warning(f"Found {buffer_count} orphaned log buffers - these indicate incomplete jobs")
             except Exception as e:
                 self.logger.error(f"Error during cleanup: {e}")
     
