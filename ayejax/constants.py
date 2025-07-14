@@ -133,4 +133,5 @@ HEADERS_TO_IGNORE = {
     "version",
     "authority",
     "protocol",
+    "content-length",
 }

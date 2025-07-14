@@ -7,23 +7,20 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-import requests
+import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from playwright.async_api import Browser
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 import ayejax
 from ayejax._interface.api.auth import AuthDependency
 from ayejax._interface.api.database import DBSessionDependency, sessionmanager
-from ayejax._interface.api.database.models.execution_state import ExecutionState
 from ayejax._interface.api.database.models.job import Job
 from ayejax._interface.api.database.models.output import Output
 from ayejax._interface.api.settings import settings
 from ayejax.job_logging import with_job_logger
-from ayejax.logging import FileHandlerConfig, get_logger
-from ayejax.pagination.strategy import NextCursorInfo
+from ayejax.pagination.strategy import LimitOffsetInfo, NextCursorInfo, PageOffsetInfo, PageOnlyInfo
 from ayejax.tag import TagLiteral
 from ayejax.types import Output as AyejaxOutput
 
@@ -52,7 +49,7 @@ class GetJobResponse(BaseModel):
     url: str
     tag: TagLiteral
     message: str
-    execution_result: dict[str, Any] | None
+    result: dict[str, Any] | None
 
 
 @router.post("/", response_model=CreateJobResponse)
@@ -84,7 +81,13 @@ async def create_job(
 
 
 @router.get("/{job_id}", response_model=GetJobResponse)
-async def get_job(job_id: UUID, db: DBSessionDependency, _: AuthDependency):
+async def get_job(
+    job_id: UUID,
+    db: DBSessionDependency,
+    _: AuthDependency,
+    limit: int = 5,
+    offset: int = 0,
+):
     """Get job details"""
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
@@ -92,10 +95,10 @@ async def get_job(job_id: UUID, db: DBSessionDependency, _: AuthDependency):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    execution_result = None
-    if job.status == "ready" and job.execution_state_id:
+    result = None
+    if job.status == "ready" and job.output_id:
         try:
-            execution_result = await execute_api_request(job.execution_state_id)
+            result = await execute_api_request(job.output_id, limit, offset)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to execute API request: {e}") from e
 
@@ -105,11 +108,11 @@ async def get_job(job_id: UUID, db: DBSessionDependency, _: AuthDependency):
         url=job.url,
         tag=job.tag,
         message=job.message,
-        execution_result=execution_result,
+        result=result,
     )
 
 
-async def create_execution_state(request: CreateJobRequest, output: AyejaxOutput, db: DBSessionDependency):
+async def create_output(request: CreateJobRequest, output: AyejaxOutput, db: DBSessionDependency):
     existing_output_result = await db.execute(
         select(Output).where(Output.url == str(request.url), Output.tag == request.tag)
     )
@@ -133,11 +136,7 @@ async def create_execution_state(request: CreateJobRequest, output: AyejaxOutput
         db.add(new_output)
         await db.flush()
 
-    execution_state_id = uuid4()
-    execution_state = ExecutionState(id=execution_state_id, output_id=output_id, created_at=datetime.now(timezone.utc))
-    db.add(execution_state)
-    await db.flush()
-    return execution_state_id
+    return output_id
 
 
 @with_job_logger("job_id")
@@ -146,7 +145,7 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: 
     async with sessionmanager.session() as db:
         try:
             logger.info("Starting job analysis", url=str(request.url), tag=request.tag)
-            
+
             # Use the job-aware logger for ayejax.analyze to capture ALL logs in S3
             output, metadata = await ayejax.analyze(str(request.url), request.tag, browser=browser, logger=logger)
 
@@ -160,8 +159,8 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: 
             job.analysis_metadata = metadata.model_dump() if metadata else None
 
             if output is not None:
-                logger.info("Creating execution state", has_output=True)
-                job.execution_state_id = await create_execution_state(request, output, db)
+                logger.info("Creating output", has_output=True)
+                job.output_id = await create_output(request, output, db)
                 job.status = "ready"
                 job.message = "Output created successfully"
                 logger.info("Job completed successfully", status="ready")
@@ -183,79 +182,159 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: 
                 await db.commit()
 
 
-async def execute_api_request(execution_state_id: UUID) -> dict[str, str]:  # noqa: C901
-    async with sessionmanager.session() as db:
-        result = await db.execute(
-            select(ExecutionState)
-            .options(selectinload(ExecutionState.output))
-            .where(ExecutionState.id == execution_state_id)
+def prepare_pagination_states(
+    pagination_strategy: PageOnlyInfo | PageOffsetInfo | LimitOffsetInfo,
+    limit: int,
+    offset: int,
+    initial_page_size: int,
+) -> list[dict[str, str]]:
+    """Prepare the API requests needed to fulfill limit/offset requirements."""
+    requests = []
+
+    if isinstance(pagination_strategy, LimitOffsetInfo):
+        # For limit/offset, we need to determine how many API calls to make
+        # based on the API's original limit (initial_page_size)
+        api_limit = initial_page_size
+        current_offset = offset
+        remaining_items = limit
+
+        while remaining_items > 0:
+            # Calculate how many items to request from this API call
+            items_to_request = min(remaining_items, api_limit)
+
+            requests.append({
+                pagination_strategy.limit_key: str(items_to_request),
+                pagination_strategy.offset_key: str(current_offset),
+            })
+
+            current_offset += items_to_request
+            remaining_items -= items_to_request
+
+    elif isinstance(pagination_strategy, PageOnlyInfo):
+        # Calculate which pages we need to fetch
+        start_page = (offset // initial_page_size) + 1
+        end_item = offset + limit
+        end_page = ((end_item - 1) // initial_page_size) + 1
+
+        for page in range(start_page, end_page + 1):
+            requests.append({pagination_strategy.page_key: str(page)})
+
+    elif isinstance(pagination_strategy, PageOffsetInfo):
+        # Calculate which pages we need to fetch
+        start_page = (offset // initial_page_size) + 1
+        end_item = offset + limit
+        end_page = ((end_item - 1) // initial_page_size) + 1
+
+        for page in range(start_page, end_page + 1):
+            requests.append({
+                pagination_strategy.page_key: str(page),
+                pagination_strategy.offset_key: str(pagination_strategy.base_offset * page),
+            })
+
+    return requests
+
+
+async def make_request(output: AyejaxOutput, pagination_state: dict[str, str]) -> str:
+    """Execute a single API request with the given parameters."""
+    if output.request.method.lower() == "post" and isinstance(output.request.post_data, dict):
+        output.request.post_data.update(pagination_state)
+    else:
+        output.request.queries.update(pagination_state)
+
+    async with httpx.AsyncClient(timeout=settings.EXTERNAL_API_REQUEST_TIMEOUT) as client:
+        response = await client.request(
+            output.request.method,
+            output.request.url,
+            params=output.request.queries,
+            headers=output.request.headers,
+            data=output.request.post_data,
         )
-        execution_state = result.scalar_one_or_none()
+        response.raise_for_status()
+        return response.text
 
-        if not execution_state:
-            raise Exception("Execution state not found")
 
-        output = AyejaxOutput.model_validate(execution_state.output.value)
+async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[str, str]:  # noqa: C901
+    async with sessionmanager.session() as db:
+        result = await db.execute(select(Output).where(Output.id == output_id))
+        output_record = result.scalar_one_or_none()
 
-        if output.pagination_strategy:
+        if not output_record:
+            raise Exception(f"Output {output_id!s} not found")
 
-            def update_state(entries: dict[str, Any]):
-                if isinstance(output.pagination_strategy, NextCursorInfo):
-                    if execution_state.last_response and (
-                        cursor := output.pagination_strategy.extract_cursor(execution_state.last_response)
-                    ):
-                        output.pagination_strategy.update_entries(entries, cursor)
-                    else:
-                        return False
-                else:
-                    output.pagination_strategy.update_entries(entries, execution_state.request_number)
+        output = AyejaxOutput.model_validate(output_record.value)
 
-                return True
-
-            if output.request.method.lower() == "post" and isinstance(output.request.post_data, dict):
-                state_updated = update_state(output.request.post_data)
-            else:
-                state_updated = update_state(output.request.queries)
-
-            if not state_updated:
-                return {"error": "No more pagination"}
+        if isinstance(output.pagination_strategy, NextCursorInfo):
+            return {"error": "Limit/offset pagination not supported for cursor-based pagination"}
 
         try:
-            response = requests.request(
-                output.request.method,
-                output.request.url,
-                params=output.request.queries,
-                headers=output.request.headers,
-                data=output.request.post_data,
-                timeout=settings.EXTERNAL_API_REQUEST_TIMEOUT,
-            )
-            response.raise_for_status()
-            response_text = response.text
+            if not output.pagination_strategy:
+                # If no pagination strategy, just return the first call
+                pagination_requests = [{}]
+            else:
+                # Calculate all the requests we need to make
+                pagination_requests = prepare_pagination_states(
+                    output.pagination_strategy, limit, offset, output.items_count_on_first_extraction
+                )
 
-            if execution_state.last_response and (execution_state.last_response == response_text):
-                return {"error": "No more pagination"}
+            data_list = []
+            successful_pagination_requests = []
+            last_response = None
 
-            if output.pagination_strategy:
-                execution_state.request_number += 1
-                execution_state.last_response = response_text
+            # Execute all requests
+            for pagination_state in pagination_requests:
+                response_text = await make_request(output, pagination_state)
 
-            execution_state.last_executed_at = datetime.now(timezone.utc)
-            execution_state.output.usage_count += 1
-            execution_state.output.last_used_at = datetime.now(timezone.utc)
+                # Check for duplicate responses (pagination end)
+                if last_response is not None and last_response == response_text:
+                    break
 
-            await db.commit()
-            await db.refresh(execution_state)
+                successful_pagination_requests.append(pagination_state)
+                last_response = response_text
 
-        except requests.RequestException as e:
-            return {"error": f"External API request failed: {e!s}"}
+                # Extract data if schema extractor is available
+                if output.schema_extractor_code:
+                    namespace = {}
+                    exec(output.schema_extractor_code, namespace)  # noqa: S102
+                    if data := namespace["extract_data"](response_text):
+                        data_list.extend(data)
+                    else:
+                        break
+                else:
+                    # If no schema extractor, return raw response
+                    data_list.append(response_text)
 
-        else:
+            # Apply final slicing for exact limit/offset
             if output.schema_extractor_code:
-                namespace = {}
-                exec(output.schema_extractor_code, namespace)  # noqa: S102
-                if data := namespace["extract_data"](response_text):
-                    return {execution_state.output.tag: data}
+                # If we fetched multiple pages, we need to calculate the correct slice
+                if len(successful_pagination_requests) > 1:
+                    # Calculate the global start index within our fetched results
+                    global_start = 0
+                    for i, pagination_state in enumerate(successful_pagination_requests):
+                        if isinstance(output.pagination_strategy, (PageOnlyInfo, PageOffsetInfo)):
+                            page_num = int(pagination_state[output.pagination_strategy.page_key])
+                            if page_num == ((offset // output.items_count_on_first_extraction) + 1):
+                                global_start = i * output.items_count_on_first_extraction
+                                break
+                        elif isinstance(output.pagination_strategy, LimitOffsetInfo):
+                            request_offset = int(pagination_state[output.pagination_strategy.offset_key])
+                            if request_offset <= offset:
+                                global_start = sum(
+                                    int(req[output.pagination_strategy.limit_key])
+                                    for req in successful_pagination_requests[:i]
+                                )
 
-                return {"error": "No more pagination"}
+                    start_idx = global_start + (offset % output.items_count_on_first_extraction)
+                else:
+                    # For structured data, we need to slice based on the original offset within our fetched data
+                    start_idx = offset % output.items_count_on_first_extraction if offset else 0
 
-            return {execution_state.output.tag: response_text}
+                data_list = data_list[start_idx : start_idx + limit]
+
+            output_record.usage_count += 1
+            output_record.last_used_at = datetime.now(timezone.utc)
+            await db.commit()
+            await db.refresh(output_record)
+
+            return {output_record.tag: data_list}  # noqa: TRY300
+        except Exception as e:
+            return {"error": f"Pagination processing failed: {e}"}

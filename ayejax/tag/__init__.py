@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ayejax.adapter import SchemaAdapter
 from ayejax.tag.schema.reviews import ReviewSchema
 
 
@@ -12,7 +11,7 @@ class TagValue(BaseModel):
         arbitrary_types_allowed = True
 
     query: str
-    output_schema_adapter: SchemaAdapter
+    output_schema: type[BaseModel]
 
 
 class Tag(Enum):
@@ -22,7 +21,7 @@ class Tag(Enum):
             "Ignore the summary of the reviews. "
             "The reviews are typically available as a list of reviews towards the bottom of the page."
         ),
-        output_schema_adapter=SchemaAdapter(list[ReviewSchema]),
+        output_schema=ReviewSchema,
     )
 
 
