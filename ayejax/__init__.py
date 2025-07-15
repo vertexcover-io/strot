@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Literal, overload
 from urllib.parse import parse_qsl, urlparse
 
-from openai import BaseModel
 from playwright.async_api import (
     Browser,
     Page,
@@ -15,6 +14,7 @@ from playwright.async_api import (
 from playwright.async_api import (
     Response as PageResponse,
 )
+from pydantic import BaseModel
 
 from ayejax import llm, pagination
 from ayejax.adapter import SchemaAdapter, drop_titles

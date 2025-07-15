@@ -264,7 +264,7 @@ async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[
         output = AyejaxOutput.model_validate(output_record.value)
 
         if isinstance(output.pagination_strategy, NextCursorInfo):
-            return {"error": "Limit/offset pagination not supported for cursor-based pagination"}
+            raise TypeError("Limit/offset pagination not supported for cursor-based pagination")
 
         try:
             if not output.pagination_strategy:
