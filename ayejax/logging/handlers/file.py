@@ -8,7 +8,7 @@ from pydantic import BaseModel
 class FileHandlerConfig(BaseModel):
     """Configuration for file-based logging handler."""
 
-    directory: str | Path
+    directory: str | Path = "logs"
     """Directory to store the log file."""
     when: str = "midnight"
     """When to rotate the log file."""
