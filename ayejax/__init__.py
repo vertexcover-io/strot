@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from ayejax import llm, pagination
 from ayejax.adapter import SchemaAdapter, drop_titles
 from ayejax.debug_session import DebugSession
+from ayejax.popup import PopupDismisser
 from ayejax.constants import (
     ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION,
     ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION,
@@ -302,6 +303,9 @@ class _RunContext:
             self._logger.info("debug-session", session_id=self._debug_session.session_id, 
                             session_dir=str(self._debug_session.session_dir))
 
+        # Initialize popup dismisser
+        self._popup_dismisser = PopupDismisser(logger)
+
         self._page.on("response", self.response_handler)
 
     async def load_url(self, url: str, load_timeout: float | None) -> None:
@@ -443,6 +447,9 @@ class _RunContext:
             self._logger.info("analysis", action="validation-success", 
                             keywords_count=len(result.keywords) if result.keywords else 0,
                             has_popup_point=result.popup_element_point is not None,
+                            has_popup_area=result.popup_area is not None,
+                            has_background_point=result.background_overlay_point is not None,
+                            popup_type=result.popup_type,
                             has_nav_point=result.navigation_element_point is not None)
             
             # Debug logging: update LLM response with validation result
@@ -642,9 +649,26 @@ class _RunContext:
                 return _continue
 
         should_continue = False
-        if popup_element_point := result.popup_element_point:
-            await self._js_ctx.click_element_at_point(popup_element_point.x, popup_element_point.y)
+        
+        # Enhanced popup handling with multiple strategies
+        popup_dismissal_result = await self._popup_dismisser.dismiss_popup(self._page, result)
+        
+        # Debug logging for popup dismissal
+        if self._debug_session:
+            step = self._debug_session.log_event("popup_dismissal", {
+                "popup_detected": popup_dismissal_result["popup_detected"],
+                "popup_type": popup_dismissal_result["popup_type"],
+                "success": popup_dismissal_result["popup_dismissed"],
+                "strategy": popup_dismissal_result["successful_strategy"]
+            })
+            self._debug_session.log_popup_dismissal(step, popup_dismissal_result)
+            
+        if popup_dismissal_result["popup_dismissed"]:
             should_continue = True
+            self._logger.info("popup-handling", 
+                            result="dismissed", 
+                            strategy=popup_dismissal_result["successful_strategy"],
+                            attempts=len(popup_dismissal_result["attempts"]))
 
         if navigation_element_point := result.navigation_element_point:
             position_before = await self._page.evaluate("() => ({ scrollX: window.scrollX, scrollY: window.scrollY })")

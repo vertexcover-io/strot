@@ -28,10 +28,20 @@ class Point(BaseModel):
     y: float
 
 
+class BoundingBox(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 class AnalysisResult(PydanticModel):
     keywords: list[str] = []
     navigation_element_point: Point | None = None
     popup_element_point: Point | None = None
+    popup_area: BoundingBox | None = None
+    background_overlay_point: Point | None = None
+    popup_type: str | None = None
 
 
 class Request(PydanticModel):

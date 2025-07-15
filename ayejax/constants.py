@@ -8,7 +8,12 @@ Strictly adhere to the following instructions:
 - Inspect the screenshot for keywords that are directly relevant to the user's data scraping requirement below.
 - Only extract keywords that represent the actual data content the user wants to scrape (e.g., product names, prices, descriptions, etc.).
 - Ignore generic website elements like navigation, headers, footers, or unrelated content.
-- If an overlay popup is visible in the screenshot, identify the "close" or "allow" clickable element's coordinates and assign them to "popup_element_point". If no overlay popup is present, set this to null.
+- If an overlay popup is visible in the screenshot:
+  - Identify explicit close elements ("×", "close", "allow", "continue", "dismiss") and assign coordinates to "popup_element_point"
+  - Determine the popup's bounding area and assign to "popup_area" (x, y, width, height)
+  - Find a safe background area outside the popup for clicking and assign to "background_overlay_point"
+  - Classify the popup type as "modal", "banner", "overlay", or "notification" and assign to "popup_type"
+  - If no overlay popup is present, set all popup fields to null
 - If and only if no suitable data-relevant keywords are found:
   - set "keywords" to an empty list.
   - Look for user requirement relevant navigation elements in the following priority order:
@@ -24,6 +29,9 @@ Provide your response in JSON matching this EXACT schema:
 {
   "keywords": ["<keyword1>", "<keyword2>", ...],
   "popup_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null,
+  "popup_area": {"x": <x>, "y": <y>, "width": <w>, "height": <h>} or null,
+  "background_overlay_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null,
+  "popup_type": "modal" | "banner" | "overlay" | "notification" or null,
   "navigation_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null
 }
 
@@ -40,7 +48,12 @@ Strictly adhere to the following instructions:
 - Inspect the screenshot for keywords that are directly relevant to the user's data scraping requirement below.
 - Only extract keywords that represent the actual data content the user wants to scrape (e.g., product names, prices, descriptions, etc.).
 - Ignore generic website elements like navigation, headers, footers, or unrelated content.
-- If an overlay popup is visible in the screenshot, identify the "close" or "allow" clickable element's coordinates and assign them to "popup_element_point". If no overlay popup is present, set this to null.
+- If an overlay popup is visible in the screenshot:
+  - Identify explicit close elements ("×", "close", "allow", "continue", "dismiss") and assign coordinates to "popup_element_point"
+  - Determine the popup's bounding area and assign to "popup_area" (x, y, width, height)
+  - Find a safe background area outside the popup for clicking and assign to "background_overlay_point"
+  - Classify the popup type as "modal", "banner", "overlay", or "notification" and assign to "popup_type"
+  - If no overlay popup is present, set all popup fields to null
 - If and only if no suitable data-relevant keywords are found:
   - set "keywords" to an empty list.
   - ONLY look for pagination controls: Page numbers (1, 2, 3...), "Next" button, ">" arrow, "More" button, or pagination dots
@@ -53,6 +66,9 @@ Provide your response in JSON matching this EXACT schema:
 {
   "keywords": ["<keyword1>", "<keyword2>", ...],
   "popup_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null,
+  "popup_area": {"x": <x>, "y": <y>, "width": <w>, "height": <h>} or null,
+  "background_overlay_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null,
+  "popup_type": "modal" | "banner" | "overlay" | "notification" or null,
   "navigation_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null
 }
 

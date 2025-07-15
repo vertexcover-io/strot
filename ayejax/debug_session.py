@@ -30,6 +30,7 @@ class DebugSession:
         (self.session_dir / "screenshots").mkdir(exist_ok=True)
         (self.session_dir / "llm_calls").mkdir(exist_ok=True)
         (self.session_dir / "network").mkdir(exist_ok=True)
+        (self.session_dir / "popup").mkdir(exist_ok=True)
         
     def log_event(
         self, 
@@ -96,6 +97,19 @@ class DebugSession:
             json.dump(request_data, f, indent=2)
             
         return f"network/{filename}"
+        
+    def log_popup_dismissal(self, step: int, dismissal_result: Dict[str, Any]) -> str:
+        """Save popup dismissal details and return path."""
+        filename = f"{step:03d}_popup_dismissal.json"
+        filepath = self.session_dir / "popup" / filename
+        
+        # Create popup directory if it doesn't exist
+        (self.session_dir / "popup").mkdir(exist_ok=True)
+        
+        with open(filepath, "w") as f:
+            json.dump(dismissal_result, f, indent=2, default=str)
+            
+        return f"popup/{filename}"
         
     def update_timeline_event(self, step: int, updates: Dict[str, Any]) -> None:
         """Update an existing timeline event with additional data."""
