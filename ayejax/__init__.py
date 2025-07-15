@@ -14,6 +14,7 @@ from playwright.async_api import (
 from playwright.async_api import (
     Response as PageResponse,
 )
+from pydantic import BaseModel
 
 from ayejax import llm, pagination
 from ayejax.adapter import SchemaAdapter, drop_titles
@@ -118,6 +119,7 @@ async def analyze(
     query: str,
     /,
     *,
+    output_schema: type[BaseModel],
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
     max_view_scrolls: int = 30,
@@ -129,6 +131,7 @@ async def analyze(
     Args:
         url: The target web page URL to analyze.
         query: The query to use for analysis.
+        output_schema: The output schema to extract data from the response.
         browser: The browser to use.
         logger: The logger to use.
         max_view_scrolls: The maximum number of view scrolls to perform before exiting.
@@ -148,16 +151,20 @@ async def analyze(
     logger: LoggerType,
     max_view_scrolls: int = 30,
     page_load_timeout: float | None = None,
+    **kwargs: Any,
 ) -> tuple[Output | None, Metadata]:
-    output_schema_adapter = None
+    output_schema = None
     if isinstance(query_or_tag, Tag):
         query = query_or_tag.value.query
-        output_schema_adapter = query_or_tag.value.output_schema_adapter
+        output_schema = query_or_tag.value.output_schema
     elif query_or_tag in Tag.__members__:
         query = Tag[query_or_tag].value.query
-        output_schema_adapter = Tag[query_or_tag].value.output_schema_adapter
+        output_schema = Tag[query_or_tag].value.output_schema
     else:
         query = query_or_tag
+        output_schema = kwargs.get("output_schema")
+        if not output_schema:
+            raise ValueError("output_schema is required when using a query")
 
     async def run(browser: Browser):
         browser_ctx = await browser.new_context(bypass_csp=True)
@@ -165,7 +172,7 @@ async def analyze(
         try:
             run_ctx = _RunContext(page=page, logger=logger)
             await run_ctx.load_url(url, page_load_timeout)
-            return await run_ctx(query, output_schema_adapter, max_view_scrolls)
+            return await run_ctx(query, output_schema, max_view_scrolls)
         finally:
             await browser_ctx.close()
 
@@ -522,8 +529,11 @@ class _RunContext:
 
         return _continue if should_continue else None
 
-    async def generate_extraction_code(self, output_schema_adapter: SchemaAdapter, response_text: str) -> str | None:
-        formatted_output_schema = json_dumps(drop_titles(output_schema_adapter.schema), indent=2)
+    async def get_extraction_code_and_items_count(
+        self, output_schema: type[BaseModel], response_text: str
+    ) -> tuple[str | None, int | None]:
+        adapter = SchemaAdapter(list[output_schema])  # Every schema will treated as If we're extracting a list of items
+        formatted_output_schema = json_dumps(drop_titles(adapter.schema), indent=2)
         retries = 3
         while retries:
             try:
@@ -544,18 +554,19 @@ class _RunContext:
                 code = matches[0].strip()
                 namespace = {}
                 exec(code, namespace)  # noqa: S102
-                print(output_schema_adapter.validate_python(namespace["extract_data"](response_text)))
+                items = adapter.validate_python(namespace["extract_data"](response_text))
+                self._logger.info("generate-extraction-code", action="success", extracted_items_count=len(items))
             except Exception:
                 retries -= 1
                 if retries <= 0:
                     raise
             else:
-                return code
+                return code, len(items)
 
-    async def __call__(  # noqa: C901
+    async def __call__(
         self,
         query: str,
-        output_schema_adapter: SchemaAdapter | None = None,
+        output_schema: type[BaseModel],
         max_view_scrolls: int = 30,
     ) -> tuple[Output | None, Metadata]:
         analysis_retry_count = 5
@@ -606,14 +617,13 @@ class _RunContext:
                     if key.lstrip(":").lower() in HEADERS_TO_IGNORE:
                         response.request.headers.pop(key)
 
+                code, items_count = await self.get_extraction_code_and_items_count(output_schema, response.value)
                 output = Output(
                     request=response.request,
                     pagination_strategy=await self.determine_strategy(response, query),
+                    schema_extractor_code=code,
+                    items_count_on_first_extraction=items_count or 1,
                 )
-                if output_schema_adapter:
-                    output.schema_extractor_code = await self.generate_extraction_code(
-                        output_schema_adapter, response.value
-                    )
 
                 metadata = Metadata(
                     extracted_keywords=analysis_result.keywords,

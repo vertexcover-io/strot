@@ -56,3 +56,4 @@ class Output(PydanticModel):
     request: Request
     pagination_strategy: StrategyInfo | None = None
     schema_extractor_code: str | None = None
+    items_count_on_first_extraction: int
