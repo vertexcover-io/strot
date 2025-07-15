@@ -304,7 +304,7 @@ class _RunContext:
                             session_dir=str(self._debug_session.session_dir))
 
         # Initialize popup dismisser
-        self._popup_dismisser = PopupDismisser(logger)
+        self._popup_dismisser = PopupDismisser(logger, self._debug_session)
 
         self._page.on("response", self.response_handler)
 
@@ -651,6 +651,12 @@ class _RunContext:
         should_continue = False
         
         # Enhanced popup handling with multiple strategies
+        if self._debug_session:
+            self._debug_session.log_execution_flow("popup_dismisser", "entry", {
+                "analysis_has_popup": result.popup_element_point is not None,
+                "popup_type": result.popup_type
+            })
+        
         popup_dismissal_result = await self._popup_dismisser.dismiss_popup(self._page, result)
         
         # Debug logging for popup dismissal
@@ -659,9 +665,27 @@ class _RunContext:
                 "popup_detected": popup_dismissal_result["popup_detected"],
                 "popup_type": popup_dismissal_result["popup_type"],
                 "success": popup_dismissal_result["popup_dismissed"],
-                "strategy": popup_dismissal_result["successful_strategy"]
+                "strategy": popup_dismissal_result["successful_strategy"],
+                "total_attempts": len(popup_dismissal_result["attempts"])
             })
             self._debug_session.log_popup_dismissal(step, popup_dismissal_result)
+            
+            # Log detailed debug data
+            self._debug_session.save_popup_debug_data(step, {
+                "analysis_result": {
+                    "popup_element_point": result.popup_element_point.model_dump() if result.popup_element_point else None,
+                    "popup_area": result.popup_area.model_dump() if result.popup_area else None,
+                    "background_overlay_point": result.background_overlay_point.model_dump() if result.background_overlay_point else None,
+                    "popup_type": result.popup_type
+                },
+                "dismissal_attempts": popup_dismissal_result["attempts"],
+                "final_result": popup_dismissal_result
+            })
+            
+            self._debug_session.log_execution_flow("popup_dismisser", "exit", {
+                "success": popup_dismissal_result["popup_dismissed"],
+                "strategy": popup_dismissal_result["successful_strategy"]
+            })
             
         if popup_dismissal_result["popup_dismissed"]:
             should_continue = True

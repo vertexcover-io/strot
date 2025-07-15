@@ -32,7 +32,7 @@ class ExplicitCloseStrategy:
                 analysis.popup_element_point.x, 
                 analysis.popup_element_point.y
             )
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(4000)
             logger.info("popup-dismissal", strategy="explicit_close", result="attempted", 
                        coordinates={"x": analysis.popup_element_point.x, "y": analysis.popup_element_point.y})
             return True
@@ -46,20 +46,36 @@ class ClickOutsideStrategy:
     
     async def attempt(self, page: Page, analysis: AnalysisResult, logger: logging.Logger) -> bool:
         if not analysis.background_overlay_point:
-            logger.debug("popup-dismissal", strategy="click_outside", result="no_background_point")
+            logger.info("popup-dismissal", strategy="click_outside", result="no_background_point", 
+                       available_points={
+                           "popup_element": analysis.popup_element_point.model_dump() if analysis.popup_element_point else None,
+                           "popup_area": analysis.popup_area.model_dump() if analysis.popup_area else None
+                       })
             return False
             
         try:
-            await page.mouse.click(
-                analysis.background_overlay_point.x,
-                analysis.background_overlay_point.y
-            )
-            await page.wait_for_timeout(2000)
+            click_x = analysis.background_overlay_point.x
+            click_y = analysis.background_overlay_point.y
+            
+            logger.info("popup-dismissal", strategy="click_outside", action="clicking_background",
+                       coordinates={"x": click_x, "y": click_y},
+                       page_url=page.url)
+            
+            await page.mouse.click(click_x, click_y)
+            
+            logger.info("popup-dismissal", strategy="click_outside", action="click_completed", 
+                       coordinates={"x": click_x, "y": click_y})
+            
+            await page.wait_for_timeout(5000)  # Increased from 2000ms to 5000ms
+            
             logger.info("popup-dismissal", strategy="click_outside", result="attempted",
-                       coordinates={"x": analysis.background_overlay_point.x, "y": analysis.background_overlay_point.y})
+                       coordinates={"x": click_x, "y": click_y},
+                       wait_time_ms=5000)
             return True
         except Exception as e:
-            logger.error("popup-dismissal", strategy="click_outside", result="error", error=str(e))
+            logger.error("popup-dismissal", strategy="click_outside", result="error", 
+                        error=str(e), exception_type=type(e).__name__,
+                        coordinates={"x": analysis.background_overlay_point.x, "y": analysis.background_overlay_point.y})
             return False
 
 
@@ -69,7 +85,7 @@ class EscapeKeyStrategy:
     async def attempt(self, page: Page, analysis: AnalysisResult, logger: logging.Logger) -> bool:
         try:
             await page.keyboard.press('Escape')
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(4000)
             logger.info("popup-dismissal", strategy="escape_key", result="attempted")
             return True
         except Exception as e:
@@ -119,7 +135,7 @@ class CalculatedOutsideStrategy:
             
             for point in safe_points:
                 await page.mouse.click(point.x, point.y)
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(3000)
                 logger.info("popup-dismissal", strategy="calculated_outside", result="attempted", 
                            coordinates={"x": point.x, "y": point.y})
                 # Note: Verification will be done by caller
