@@ -106,8 +106,51 @@ class DebugSession:
         # Create popup directory if it doesn't exist
         (self.session_dir / "popup").mkdir(exist_ok=True)
         
+        # Enhanced dismissal result with debug info
+        enhanced_result = {
+            "timestamp": datetime.now().isoformat(),
+            "step": step,
+            "session_id": self.session_id,
+            "dismissal_result": dismissal_result
+        }
+        
         with open(filepath, "w") as f:
-            json.dump(dismissal_result, f, indent=2, default=str)
+            json.dump(enhanced_result, f, indent=2, default=str)
+            
+        return f"popup/{filename}"
+        
+    def log_execution_flow(self, component: str, action: str, details: Dict[str, Any] = None) -> None:
+        """Log execution flow for debugging."""
+        flow_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "component": component,
+            "action": action,
+            "details": details or {}
+        }
+        
+        # Create execution flow log file
+        flow_file = self.session_dir / "execution_flow.jsonl"
+        with open(flow_file, "a") as f:
+            json.dump(flow_entry, f, default=str)
+            f.write("\n")
+            
+    def save_popup_debug_data(self, step: int, debug_data: Dict[str, Any]) -> str:
+        """Save detailed popup debug data including screenshots and analysis."""
+        filename = f"{step:03d}_popup_debug.json"
+        filepath = self.session_dir / "popup" / filename
+        
+        # Create popup directory if it doesn't exist
+        (self.session_dir / "popup").mkdir(exist_ok=True)
+        
+        debug_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "step": step,
+            "session_id": self.session_id,
+            "debug_data": debug_data
+        }
+        
+        with open(filepath, "w") as f:
+            json.dump(debug_entry, f, indent=2, default=str)
             
         return f"popup/{filename}"
         
