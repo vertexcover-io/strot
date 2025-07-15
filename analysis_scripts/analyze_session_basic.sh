@@ -1,7 +1,25 @@
 #!/bin/bash
 
 # Basic Session Log Analysis Script
-SESSION_DIR="logs/session_20250715_232742"
+if [ $# -eq 0 ]; then
+    echo "Available sessions:"
+    ls -1 logs/ | grep ^session_ | sort
+    echo
+    echo "Usage: $0 <session_name>"
+    echo "Example: $0 session_20250716_002557"
+    exit 1
+fi
+
+SESSION_NAME="$1"
+if [[ ! "$SESSION_NAME" =~ ^session_ ]]; then
+    SESSION_NAME="session_$SESSION_NAME"
+fi
+SESSION_DIR="logs/$SESSION_NAME"
+
+if [ ! -d "$SESSION_DIR" ]; then
+    echo "Session directory not found: $SESSION_DIR"
+    exit 1
+fi
 
 echo "=== SESSION LOG ANALYSIS ==="
 echo "Session Directory: $SESSION_DIR"

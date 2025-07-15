@@ -281,8 +281,25 @@ class SessionAnalyzer:
         return "\n".join(report)
 
 def main():
-    analyzer = SessionAnalyzer('logs/session_20250715_232742')
+    import sys
     
+    if len(sys.argv) > 1:
+        session_name = sys.argv[1]
+        if not session_name.startswith('session_'):
+            session_name = f'session_{session_name}'
+        session_path = f'logs/{session_name}'
+    else:
+        # List available sessions
+        import os
+        sessions = [d for d in os.listdir('logs') if d.startswith('session_')]
+        print("Available sessions:")
+        for session in sorted(sessions):
+            print(f"  {session}")
+        print("\nUsage: python comprehensive_analysis.py <session_name>")
+        print("Example: python comprehensive_analysis.py session_20250716_002557")
+        return
+    
+    analyzer = SessionAnalyzer(session_path)
     print(analyzer.generate_report())
 
 if __name__ == '__main__':

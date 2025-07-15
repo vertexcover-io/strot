@@ -7,6 +7,14 @@ Advanced diagnostic tools for analyzing ayejax session logs to diagnose popup di
 Run enhanced analysis suite:
 ```bash
 cd /home/abhishek/Downloads/experiments/vertexcover/ayejax
+
+# Analyze a specific session
+./analysis_scripts/run_all_analysis.sh session_20250716_002557
+
+# Compare with an older session
+./analysis_scripts/run_all_analysis.sh session_20250716_002557 session_20250715_232742
+
+# See available sessions
 ./analysis_scripts/run_all_analysis.sh
 ```
 
@@ -14,7 +22,7 @@ cd /home/abhishek/Downloads/experiments/vertexcover/ayejax
 
 ### 1. `analyze_execution_flow.py` ⭐ **NEW**
 **Purpose**: Track PopupDismisser lifecycle and identify hang points  
-**Usage**: `uv run analysis_scripts/analyze_execution_flow.py [session_dir]`  
+**Usage**: `uv run analysis_scripts/analyze_execution_flow.py <session_name>`  
 **Key Features**:
 - Parses `execution_flow.jsonl` for start/complete pairs
 - Identifies hanging PopupDismisser attempts
@@ -29,7 +37,7 @@ cd /home/abhishek/Downloads/experiments/vertexcover/ayejax
 
 ### 2. `analyze_popup_logs.py` ⭐ **NEW** 
 **Purpose**: Deep search for popup dismissal logs across ALL session files  
-**Usage**: `uv run analysis_scripts/analyze_popup_logs.py [session_dir]`  
+**Usage**: `uv run analysis_scripts/analyze_popup_logs.py <session_name>`  
 **Key Features**:
 - Searches JSON, JSONL, and text files
 - Extracts strategy execution logs
@@ -59,106 +67,115 @@ cd /home/abhishek/Downloads/experiments/vertexcover/ayejax
 
 ### 4. `analyze_session_basic.sh`
 **Purpose**: Basic directory structure and file count analysis  
-**Usage**: `./analysis_scripts/analyze_session_basic.sh`  
+**Usage**: `./analysis_scripts/analyze_session_basic.sh <session_name>`  
 
 ### 5. `analyze_llm_responses.py`
 **Purpose**: LLM response analysis for popup detection patterns  
-**Usage**: `uv run analysis_scripts/analyze_llm_responses.py`  
+**Usage**: `uv run analysis_scripts/analyze_llm_responses.py <session_name>`  
 
 ### 6. `check_popup_dismissal.sh`
 **Purpose**: Traditional popup dismissal verification  
-**Usage**: `./analysis_scripts/check_popup_dismissal.sh`  
+**Usage**: `./analysis_scripts/check_popup_dismissal.sh <session_name>`  
 
 ### 7. `comprehensive_analysis.py`
 **Purpose**: Root cause analysis with actionable recommendations  
-**Usage**: `uv run analysis_scripts/comprehensive_analysis.py`  
+**Usage**: `uv run analysis_scripts/comprehensive_analysis.py <session_name>`  
 
-### 8. `run_all_analysis.sh` 🔄 **ENHANCED**
-**Purpose**: Master script with enhanced debug tracking workflow  
-**Usage**: `./analysis_scripts/run_all_analysis.sh`
+### 8. `generate_html_report.py`
+**Purpose**: Generate comprehensive HTML reports for all sessions  
+**Usage**: `uv run analysis_scripts/generate_html_report.py [logs_dir]`  
 
-## 🔍 Enhanced Debug Tracking
+### 9. `generate_session_csv.py`
+**Purpose**: Export session data to CSV for analysis  
+**Usage**: `uv run analysis_scripts/generate_session_csv.py [logs_dir]`  
 
-The new scripts can detect and analyze these debug log phases:
+### 10. `generate_single_session_html.py` ⭐ **ENHANCED**
+**Purpose**: Generate detailed HTML report for a single session with keyboard navigation  
+**Usage**: `uv run analysis_scripts/generate_single_session_html.py <session_name>`  
+**Key Features**:
+- Interactive screenshot viewer with keyboard navigation (←/→ arrow keys)
+- 6 detailed tabs: Overview, Timeline, Screenshots, LLM Calls, Popups, Raw Data
+- Embedded screenshots with modal zoom and counter
+- Full LLM request/response pairs for debugging
 
-```
-✅ PopupDismisser Entry       → dismiss_popup_start
-❓ Screenshot Phase          → taking_before_screenshot → screenshot_phase_complete  
-❓ Strategy Loop             → entering_strategy_loop → strategy_loop_complete
-❓ Individual Strategies     → strategy="click_outside" action="clicking_background"
-❓ Verification Phase        → running_final_verification → result="completed"
-```
+📖 **[Report Generation Documentation](REPORT_GENERATION.md)** - Complete guide for all reporting features  
 
-## 📊 Session Structure (Enhanced)
+### 11. `run_all_analysis.sh` 🔄 **ENHANCED**
+**Purpose**: Master script that runs all analysis automatically  
+**Usage**: `./analysis_scripts/run_all_analysis.sh <session_name> [old_session_name]`
+
+## 📊 Session Structure
 
 ```
 logs/session_YYYYMMDD_HHMMSS/
-├── execution_flow.jsonl    # 🆕 PopupDismisser lifecycle tracking
+├── execution_flow.jsonl    # PopupDismisser lifecycle tracking
 ├── llm_calls/              # LLM request/response pairs
 ├── popup/                  # Popup dismissal logs (may be empty)
 ├── screenshots/            # Screenshots at each step
 └── network/               # Network activity logs (may be empty)
 ```
 
-## 🎯 Diagnostic Workflow
+## 🎯 Quick Reference
 
-1. **Execution Flow Analysis**: Check if PopupDismisser starts but never completes
-2. **Debug Phase Detection**: Identify which phase causes hanging (screenshot, strategy loop, verification)
-3. **Strategy Execution Verification**: Confirm if strategies are actually being called with correct coordinates
-4. **Session Comparison**: Compare before/after debug improvements
-5. **Root Cause Determination**: Pinpoint exact code location causing issues
+| Analysis Type | Script | Purpose |
+|---------------|--------|---------|
+| **Execution Flow** | `analyze_execution_flow.py` | Track PopupDismisser lifecycle |
+| **Popup Logs** | `analyze_popup_logs.py` | Search for strategy execution logs |
+| **LLM Analysis** | `analyze_llm_responses.py` | Popup detection patterns |
+| **Session Health** | `comprehensive_analysis.py` | Root cause analysis |
+| **Comparison** | `compare_sessions.py` | Before/after improvements |
+| **Reports** | `generate_html_report.py` | Visual session reports |
+| **Data Export** | `generate_session_csv.py` | Export to spreadsheet |
 
-## 🔧 Common Issues Detected
-
-### Issue: PopupDismisser Hangs
-**Symptoms**: 
-- `dismiss_popup_start` logs present
-- No `dismiss_popup_complete` logs
-- Empty `popup/` directory
-
-**Diagnosis**: Use `analyze_execution_flow.py` to find hanging attempts and missing debug phases
-
-**Common Causes**:
-- Screenshot timeout (missing `screenshot_phase_complete`)
-- Strategy loop never reached (missing `entering_strategy_loop`)  
-- Verification failure (missing `result="completed"`)
-
-### Issue: Strategies Not Executing
-**Symptoms**:
-- PopupDismisser completes but popup remains
-- No `click_outside` or `explicit_close` action logs
-
-**Diagnosis**: Use `analyze_popup_logs.py` to search for strategy execution logs
-
-### Issue: Coordinate Mismatch
-**Symptoms**:
-- Strategies execute but clicks miss popup
-- Popup coordinates provided by LLM but different coordinates used
-
-**Diagnosis**: Use coordinate analysis in `analyze_popup_logs.py`
-
-## 💡 Pro Tips
-
-- **Quick Diagnosis**: Run `analyze_execution_flow.py` first to see if PopupDismisser is hanging
-- **Deep Dive**: Use `analyze_popup_logs.py` when execution completes but popup remains  
-- **Before/After**: Use `compare_sessions.py` to verify debug improvements are working
-- **Full Suite**: Run `run_all_analysis.sh` for comprehensive analysis
+For detailed popup troubleshooting, see [POPUP.md](POPUP.md)
 
 ## Example Usage
 
 ```bash
+# Show available sessions (any script without parameters)
+uv run analysis_scripts/analyze_execution_flow.py
+
 # Quick hang detection
-uv run analysis_scripts/analyze_execution_flow.py logs/session_20250715_235753
+uv run analysis_scripts/analyze_execution_flow.py session_20250715_235753
 
 # Deep strategy analysis  
-uv run analysis_scripts/analyze_popup_logs.py logs/session_20250715_235753
+uv run analysis_scripts/analyze_popup_logs.py session_20250715_235753
 
 # Compare old vs new session
-uv run analysis_scripts/compare_sessions.py logs/session_20250715_232742 logs/session_20250715_235753
+uv run analysis_scripts/compare_sessions.py session_20250715_232742 session_20250715_235753
 
-# Full analysis suite
-./analysis_scripts/run_all_analysis.sh
+# Generate HTML report for single session
+uv run analysis_scripts/generate_single_session_html.py session_20250716_002557
+
+# Generate CSV report for all sessions
+uv run analysis_scripts/generate_session_csv.py
+
+# Full analysis suite (non-interactive)
+./analysis_scripts/run_all_analysis.sh session_20250716_002557
+
+# Full analysis with comparison
+./analysis_scripts/run_all_analysis.sh session_20250716_002557 session_20250715_232742
 ```
+
+## Key Features
+
+### 🔄 Non-Interactive Operation
+- All scripts run automatically without user prompts
+- Perfect for automated analysis workflows
+- Clear progress indicators and section separators
+
+### 📊 Flexible Session Selection
+- All scripts accept session names with or without `session_` prefix
+- Show available sessions when run without parameters
+- Consistent parameter handling across all scripts
+
+### 📈 Comprehensive Analysis
+- **Execution Flow**: Track PopupDismisser lifecycle and hanging attempts
+- **Popup Logs**: Deep search across all session files for dismissal logs
+- **LLM Analysis**: Popup detection patterns and coordinate extraction
+- **Session Comparison**: Before/after analysis for debugging improvements
+- **HTML Reports**: Visual reports with embedded screenshots and navigation
+- **CSV Export**: Structured data for spreadsheet analysis
 
 ## Requirements
 

@@ -50,7 +50,23 @@ def analyze_response_file(file_path: Path) -> Dict[str, Any]:
         }
 
 def main():
-    session_dir = Path('logs/session_20250715_232742')
+    import sys
+    
+    if len(sys.argv) > 1:
+        session_name = sys.argv[1]
+        if not session_name.startswith('session_'):
+            session_name = f'session_{session_name}'
+        session_dir = Path(f'logs/{session_name}')
+    else:
+        import os
+        sessions = [d for d in os.listdir('logs') if d.startswith('session_')]
+        print("Available sessions:")
+        for session in sorted(sessions):
+            print(f"  {session}")
+        print("\nUsage: python analyze_llm_responses.py <session_name>")
+        print("Example: python analyze_llm_responses.py session_20250716_002557")
+        return
+    
     llm_calls_dir = session_dir / 'llm_calls'
     
     if not llm_calls_dir.exists():

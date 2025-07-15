@@ -218,7 +218,11 @@ def main():
         print(f"Logs directory not found: {logs_dir}")
         sys.exit(1)
     
-    output_file = logs_dir.parent / "session_analysis.csv"
+    # Create reports/csv directory
+    reports_dir = logs_dir.parent / "reports" / "csv"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    
+    output_file = reports_dir / "session_analysis.csv"
     generate_csv_report(logs_dir, output_file)
 
 if __name__ == "__main__":

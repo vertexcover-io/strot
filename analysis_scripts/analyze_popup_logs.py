@@ -404,7 +404,20 @@ class PopupLogsAnalyzer:
 def main():
     import sys
     
-    session_dir = sys.argv[1] if len(sys.argv) > 1 else 'logs/session_20250715_235753'
+    if len(sys.argv) > 1:
+        session_name = sys.argv[1]
+        if not session_name.startswith('session_'):
+            session_name = f'session_{session_name}'
+        session_dir = f'logs/{session_name}'
+    else:
+        import os
+        sessions = [d for d in os.listdir('logs') if d.startswith('session_')]
+        print("Available sessions:")
+        for session in sorted(sessions):
+            print(f"  {session}")
+        print("\nUsage: python analyze_popup_logs.py <session_name>")
+        print("Example: python analyze_popup_logs.py session_20250716_002557")
+        return
     
     analyzer = PopupLogsAnalyzer(session_dir)
     print(analyzer.generate_report())

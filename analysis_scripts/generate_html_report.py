@@ -770,7 +770,11 @@ def main():
         print(f"Logs directory not found: {logs_dir}")
         sys.exit(1)
     
-    output_file = logs_dir.parent / "session_analysis_report.html"
+    # Create reports/html directory
+    reports_dir = logs_dir.parent / "reports" / "html"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    
+    output_file = reports_dir / "session_analysis_report.html"
     generate_html_report(logs_dir, output_file)
 
 if __name__ == "__main__":
