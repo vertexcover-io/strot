@@ -282,7 +282,7 @@ class _RunContext:
         self._page.on("response", self.response_handler)
 
     async def load_url(self, url: str, load_timeout: float | None) -> None:
-        await self._page.goto(url, timeout=load_timeout, wait_until="commit")
+        await self._page.goto(url, timeout=load_timeout, wait_until="domcontentloaded")
         await self._page.wait_for_timeout(5000)
         self._ignore_js_files = False
 
@@ -321,7 +321,7 @@ class _RunContext:
 
     async def perform_analysis(self, query: str) -> AnalysisResult | None:
         try:
-            screenshot = await self._page.screenshot(type="png")
+            screenshot = await self._page.screenshot(type="png", timeout=60000)
             if not self._section_navigated:
                 prompt = ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION % query
             else:
