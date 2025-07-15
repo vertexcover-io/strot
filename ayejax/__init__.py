@@ -1,3 +1,4 @@
+import os
 import re
 import time
 from contextlib import asynccontextmanager, suppress
@@ -18,6 +19,7 @@ from pydantic import BaseModel
 
 from ayejax import llm, pagination
 from ayejax.adapter import SchemaAdapter, drop_titles
+from ayejax.debug_session import DebugSession
 from ayejax.constants import (
     ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION,
     ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION,
@@ -170,9 +172,20 @@ async def analyze(
         browser_ctx = await browser.new_context(bypass_csp=True)
         page = await browser_ctx.new_page()
         try:
-            run_ctx = _RunContext(page=page, logger=logger)
+            run_ctx = _RunContext(page=page, logger=logger, url=url, tag=tag)
             await run_ctx.load_url(url, page_load_timeout)
-            return await run_ctx(query, output_schema, max_view_scrolls)
+            result = await run_ctx(query, output_schema, max_view_scrolls)
+            
+            # Finalize debug session with successful result
+            if run_ctx._debug_session:
+                run_ctx._debug_session.finalize(result=result)
+                
+            return result
+        except Exception as exc:
+            # Finalize debug session with error
+            if hasattr(run_ctx, '_debug_session') and run_ctx._debug_session:
+                run_ctx._debug_session.finalize(error=str(exc))
+            raise
         finally:
             await browser_ctx.close()
 
@@ -263,6 +276,8 @@ class _RunContext:
         self,
         page: Page,
         logger: LoggerType,
+        url: str = None,
+        tag: str = None,
     ) -> None:
         self._page = page
         self._logger = logger
@@ -279,12 +294,42 @@ class _RunContext:
         self._completions: list[llm.LLMCompletion] = []
         self._section_navigated = False
 
+        # Initialize debug session if enabled
+        debug_enabled = os.getenv('AYEJAX_DEBUG_LOCAL', 'true').lower() == 'true'
+        self._debug_session = DebugSession(url, tag) if debug_enabled and url and tag else None
+        if self._debug_session:
+            self._debug_session.setup_directories()
+            self._logger.info("debug-session", session_id=self._debug_session.session_id, 
+                            session_dir=str(self._debug_session.session_dir))
+
         self._page.on("response", self.response_handler)
 
     async def load_url(self, url: str, load_timeout: float | None) -> None:
+        # Compile a regex to match asset file extensions
+        asset_regex = re.compile(r"\.(css|woff|woff2|ttf|eot|svg|png|jpg|jpeg|gif)$", re.IGNORECASE)
+
+        # Set up routing to abort requests for non-essential assets
+        await self._page.route(asset_regex, lambda route: route.abort())
+
+        # Navigate to the page. This will now be much faster.
         await self._page.goto(url, timeout=load_timeout, wait_until="domcontentloaded")
+        
+        # It's good practice to unroute after the page has loaded, so that any
+        # subsequent, necessary asset requests (e.g., from user interaction) are not blocked.
+        await self._page.unroute(asset_regex)
+
         await self._page.wait_for_timeout(5000)
         self._ignore_js_files = False
+        
+        # Debug logging: capture initial page load
+        if self._debug_session:
+            screenshot = await self._page.screenshot(type="png", animations="disabled")
+            viewport = await self._page.evaluate("({width: window.innerWidth, height: window.innerHeight})")
+            self._debug_session.log_event("page_load", {
+                "url": url,
+                "viewport": viewport,
+                "timeout": load_timeout
+            }, screenshot)
 
     async def response_handler(self, response: PageResponse) -> None:
         rsc_type = response.request.resource_type
@@ -321,24 +366,114 @@ class _RunContext:
 
     async def perform_analysis(self, query: str) -> AnalysisResult | None:
         try:
-            screenshot = await self._page.screenshot(type="png", timeout=60000)
+            # With asset requests being aborted, the screenshot should no longer time out
+            # waiting for fonts. The invalid 'wait_for_fonts' argument is removed.
+            screenshot = await self._page.screenshot(
+                type="png",
+                timeout=60000,  # A generous timeout is still fine
+                animations="disabled"  # Disables CSS animations for a stable capture
+            )
+            
+            # Log screenshot metadata
+            screenshot_size = len(screenshot)
+            self._logger.info("analysis", action="screenshot-captured", 
+                            size_bytes=screenshot_size, 
+                            current_url=self._page.url,
+                            section_navigated=self._section_navigated)
             if not self._section_navigated:
                 prompt = ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION % query
+                template_type = "WITH_SECTION_NAVIGATION"
             else:
                 prompt = ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION % query
+                template_type = "WITHOUT_SECTION_NAVIGATION"
+
+            # Log detailed prompt information
+            self._logger.info("analysis", action="llm-request", 
+                            template_type=template_type,
+                            query=query,
+                            prompt_length=len(prompt),
+                            prompt_preview=prompt[:200] + "..." if len(prompt) > 200 else prompt)
 
             llm_input = llm.LLMInput(prompt=prompt, image=screenshot)
             completion = await self._llm_client.get_completion(llm_input, json=True)
-            self._logger.info("analysis", action="llm-completion", completion=completion.value)
+            
+            # Log detailed completion information
+            self._logger.info("analysis", action="llm-completion", 
+                            completion=completion.value,
+                            completion_length=len(completion.value),
+                            input_tokens=getattr(completion, 'input_tokens', 'unknown'),
+                            output_tokens=getattr(completion, 'output_tokens', 'unknown'))
             self._completions.append(completion)
+            
+            # Debug logging: save LLM call details
+            if self._debug_session:
+                step = self._debug_session.log_event("llm_analysis", {
+                    "template_type": template_type,
+                    "query": query,
+                    "prompt_length": len(prompt),
+                    "screenshot_size": screenshot_size,
+                    "current_url": self._page.url
+                }, screenshot)
+                
+                # Save LLM request/response files
+                request_data = {
+                    "template": template_type,
+                    "query": query,
+                    "prompt": prompt,
+                    "prompt_length": len(prompt),
+                    "screenshot_size": screenshot_size
+                }
+                
+                response_data = {
+                    "completion": completion.value,
+                    "input_tokens": getattr(completion, 'input_tokens', 'unknown'),
+                    "output_tokens": getattr(completion, 'output_tokens', 'unknown')
+                }
+                
+                self._debug_session.save_llm_call(step, request_data, response_data)
+                
         except Exception as exc:
-            self._logger.error("analysis", action="llm-completion", exception=exc)
+            self._logger.error("analysis", action="llm-completion", exception=exc, query=query)
             raise
 
         try:
-            return AnalysisResult.model_validate_json(completion.value)
+            # Log validation attempt
+            self._logger.info("analysis", action="validation-attempt", json_input=completion.value)
+            result = AnalysisResult.model_validate_json(completion.value)
+            self._logger.info("analysis", action="validation-success", 
+                            keywords_count=len(result.keywords) if result.keywords else 0,
+                            has_popup_point=result.popup_element_point is not None,
+                            has_nav_point=result.navigation_element_point is not None)
+            
+            # Debug logging: update LLM response with validation result
+            if self._debug_session:
+                # Update the most recent LLM call response with validation success
+                response_data["validation_result"] = {
+                    "success": True,
+                    "keywords_count": len(result.keywords) if result.keywords else 0,
+                    "has_popup_point": result.popup_element_point is not None,
+                    "has_nav_point": result.navigation_element_point is not None
+                }
+                self._debug_session.save_llm_call(step, request_data, response_data)
+                
+            return result
         except Exception as exc:
-            self._logger.error("analysis", action="result-validation", exception=exc)
+            self._logger.error("analysis", action="result-validation", 
+                            exception=exc, 
+                            json_input=completion.value,
+                            validation_error_detail=str(exc))
+            
+            # Debug logging: update LLM response with validation failure
+            if self._debug_session:
+                response_data["validation_result"] = {
+                    "success": False,
+                    "error": str(exc),
+                    "json_input": completion.value
+                }
+                self._debug_session.save_llm_call(step, request_data, response_data)
+                self._debug_session.update_timeline_event(step, {"status": "validation_failed", "error": str(exc)})
+                
+            raise
 
     def perform_matching(self, keywords: list[str]) -> Response | None:
         self._logger.info("matching", keywords=keywords)
@@ -533,7 +668,8 @@ class _RunContext:
         self, output_schema: type[BaseModel], response_text: str
     ) -> tuple[str | None, int | None]:
         adapter = SchemaAdapter(list[output_schema])  # Every schema will treated as If we're extracting a list of items
-        formatted_output_schema = json_dumps(drop_titles(adapter.schema), indent=2)
+        schema_dict = drop_titles(adapter.schema.copy())
+        formatted_output_schema = json_dumps(schema_dict, indent=2, default=str)
         retries = 3
         while retries:
             try:

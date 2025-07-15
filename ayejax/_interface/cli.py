@@ -28,7 +28,7 @@ async def main(
         tag: Tag to use
     """
     filename = normalize_filename(url)
-    logger = get_logger(filename, FileHandlerConfig(directory="."))
+    logger = get_logger(filename, FileHandlerConfig(directory="logs"))
 
     output, metadata = await ayejax.analyze(url, tag, logger=logger)
     if output is None:

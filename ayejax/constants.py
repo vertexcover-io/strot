@@ -19,13 +19,17 @@ Strictly adhere to the following instructions:
   - Assign the coordinates of this element to "navigation_element_point"
   - If no relevant navigation element is found, set this to null
 
-Provide your response in JSON matching this schema:
+Provide your response in JSON matching this EXACT schema:
 
 {
   "keywords": ["<keyword1>", "<keyword2>", ...],
-  "popup_element_point": {"x": <x>, "y": <y>} or null,
-  "navigation_element_point": {"x": <x>, "y": <y>} or null
+  "popup_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null,
+  "navigation_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null
 }
+
+Example valid responses:
+- {"keywords": [], "popup_element_point": null, "navigation_element_point": {"x": 680, "y": 420}}
+- {"keywords": ["review", "rating"], "popup_element_point": {"x": 100, "y": 200}, "navigation_element_point": null}
 
 User Requirement: %s"""
 
@@ -44,13 +48,17 @@ Strictly adhere to the following instructions:
   - If a pagination control is found, assign its coordinates to "navigation_element_point"
   - If no pagination control is found, set "navigation_element_point" to null
 
-Provide your response in JSON matching this schema:
+Provide your response in JSON matching this EXACT schema:
 
 {
   "keywords": ["<keyword1>", "<keyword2>", ...],
-  "popup_element_point": {"x": <x>, "y": <y>} or null,
-  "navigation_element_point": {"x": <x>, "y": <y>} or null
+  "popup_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null,
+  "navigation_element_point": {"x": <x_coordinate>, "y": <y_coordinate>} or null
 }
+
+Example valid responses:
+- {"keywords": [], "popup_element_point": null, "navigation_element_point": {"x": 680, "y": 420}}
+- {"keywords": ["review", "rating"], "popup_element_point": {"x": 100, "y": 200}, "navigation_element_point": null}
 
 User Requirement: %s"""
 
