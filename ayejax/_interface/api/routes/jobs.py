@@ -271,17 +271,15 @@ async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[
 
         output = AyejaxOutput.model_validate(output_record.value)
 
-        if isinstance(output.pagination_strategy, NextCursorInfo):
-            raise TypeError("Limit/offset pagination not supported for cursor-based pagination")
-
+        strategy = output.pagination_strategy
         try:
-            if not output.pagination_strategy:
-                # If no pagination strategy, just return the first call
+            if not strategy or isinstance(strategy, NextCursorInfo):
+                # If pagination strategy is not available or is cursor-based, just return the first call
                 pagination_requests = [{}]
             else:
                 # Calculate all the requests we need to make
                 pagination_requests = prepare_pagination_states(
-                    output.pagination_strategy, limit, offset, output.items_count_on_first_extraction
+                    strategy, limit, offset, output.items_count_on_first_extraction
                 )
 
             data_list = []
@@ -318,17 +316,16 @@ async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[
                     # Calculate the global start index within our fetched results
                     global_start = 0
                     for i, pagination_state in enumerate(successful_pagination_requests):
-                        if isinstance(output.pagination_strategy, (PageOnlyInfo, PageOffsetInfo)):
-                            page_num = int(pagination_state[output.pagination_strategy.page_key])
+                        if isinstance(strategy, (PageOnlyInfo, PageOffsetInfo)):
+                            page_num = int(pagination_state[strategy.page_key])
                             if page_num == ((offset // output.items_count_on_first_extraction) + 1):
                                 global_start = i * output.items_count_on_first_extraction
                                 break
-                        elif isinstance(output.pagination_strategy, LimitOffsetInfo):
-                            request_offset = int(pagination_state[output.pagination_strategy.offset_key])
+                        elif isinstance(strategy, LimitOffsetInfo):
+                            request_offset = int(pagination_state[strategy.offset_key])
                             if request_offset <= offset:
                                 global_start = sum(
-                                    int(req[output.pagination_strategy.limit_key])
-                                    for req in successful_pagination_requests[:i]
+                                    int(req[strategy.limit_key]) for req in successful_pagination_requests[:i]
                                 )
 
                     start_idx = global_start + (offset % output.items_count_on_first_extraction)
@@ -343,6 +340,12 @@ async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[
             await db.commit()
             await db.refresh(output_record)
 
-            return {output_record.tag: data_list}  # noqa: TRY300
+            result = {output_record.tag: data_list}
+            if strategy and isinstance(strategy, NextCursorInfo):
+                result["error"] = (
+                    "Limit/offset pagination not supported for cursor-based pagination. Returning data from first page."
+                )
         except Exception as e:
             return {"error": f"Pagination processing failed: {e}"}
+
+        return result
