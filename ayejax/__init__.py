@@ -34,7 +34,10 @@ from ayejax.types import (
     Response,
 )
 
-__all__ = ("analyse", "analyze", "create_browser", "find")
+__all__ = (
+    "analyze",
+    "create_browser",
+)
 
 
 @asynccontextmanager
@@ -168,14 +171,14 @@ async def analyze(
         browser_ctx = await browser.new_context(bypass_csp=True)
         page = await browser_ctx.new_page()
         try:
-            logger.info("analyzer", action="init", url=url, query=query)
+            logger.info("analysis", action="begin", url=url, query=query)
             run_ctx = _AnalyzerContext(page=page, logger=logger)
             await run_ctx.load_url(url, page_load_timeout)
             output = await run_ctx(query, output_schema, max_attempts)
             if not output:
-                logger.info("analyzer", action="end", status="failed", message="No relevant request found")
+                logger.info("analysis", action="end", status="failed", message="No relevant request found")
             else:
-                logger.info("analyzer", action="end", status="success", relevant_api_call=output.request.url)
+                logger.info("analysis", action="end", status="success", relevant_api_call=output.request.url)
             return output
         finally:
             await browser_ctx.close()
@@ -200,7 +203,7 @@ class _AnalyzerContext:
             model="claude-sonnet-4-20250514",
         )
 
-        self._js_ctx = _JSContext(page, logger)
+        self._js_ctx = _JSContext(page)
 
         self._ignore_js_files = True
         self._captured_responses: list[Response] = []
@@ -423,16 +426,21 @@ class _AnalyzerContext:
         if sections := result.text_sections:
             self._logger.info("run-step", step="text-processing", context=encode_image(screenshot))
             for response in self._captured_responses:
-                self._logger.info("run-step", action="matching", against=response.value[:100])
+                self._logger.info("run-step", action="matching", status="pending", url=response.request.url)
                 score = keyword_match_ratio(sections, response.value)
-                self._logger.info("run-step", action="matching", url=response.request.url, score=score)
+                self._logger.info("run-step", action="matching", status="done", score=score)
                 if score < 0.4:
                     continue
 
                 return response
 
-            if await self._js_ctx.skip_similar_content(sections):
+            self._logger.info("run-step", action="similar-content-skip", status="pending")
+            if element := await self._js_ctx.get_last_similar_element(sections):
+                self._logger.info("run-step", action="similar-content-skip", status="success", target=element)
+                await self._js_ctx.scroll_to_element(element)
                 return
+
+            self._logger.info("run-step", action="similar-content-skip", status="failed")
 
         def get_context(point: Point) -> bytes:
             image = draw_point_on_image(screenshot, point)
@@ -459,11 +467,7 @@ class _AnalyzerContext:
             if await self._js_ctx.click_at_point(result.skip_to_content_coords):
                 return
 
-        self._logger.info(
-            "run-step",
-            step="scroll-to-next-view",
-            context=None,  # If we're here, then context has already been logged
-        )
+        self._logger.info("run-step", step="scroll-to-next-view", context=encode_image(screenshot))
         await self._js_ctx.scroll_to_next_view()
 
     async def __call__(
@@ -518,24 +522,17 @@ class _JSContext:
     Context manager for JavaScript evaluation.
     """
 
-    def __init__(self, page: Page, logger: LoggerType) -> None:
+    def __init__(self, page: Page) -> None:
         self._page = page
-        self._logger = logger
 
     async def evaluate(self, expr: str, args=None) -> bool:
         if not await self._page.evaluate("() => window.scriptInjected === true"):
             _ = await self._page.add_script_tag(path=Path(__file__).parent / "inject.js")
 
-        try:
-            self._logger.info("page", action="eval", expr=expr, args=args)
-            await self._page.wait_for_load_state("domcontentloaded")
-            result = await self._page.evaluate(expr, args)
-            await self._page.wait_for_load_state("domcontentloaded")
-        except Exception as e:
-            self._logger.error("page", action="eval", expr=expr, args=args, exception=e)
-            raise
-        else:
-            return result
+        await self._page.wait_for_load_state("domcontentloaded")
+        result = await self._page.evaluate(expr, args)
+        await self._page.wait_for_load_state("domcontentloaded")
+        return result
 
     async def get_selectors_in_view(self) -> set[str]:
         selectors = await self.evaluate(
@@ -562,7 +559,7 @@ class _JSContext:
     async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
         return await self.evaluate("([direction]) => scrollToNextView({ direction })", [direction])
 
-    async def skip_similar_content(self, text_sections: list[str]) -> bool:
+    async def get_last_similar_element(self, text_sections: list[str]) -> str | None:
         texts_in_view_to_last_sibling_selectors: dict[str, str] = await self.evaluate(
             """
             () => {
@@ -583,18 +580,14 @@ class _JSContext:
             reverse=True,
         ):
             best_match_ratio = 0.0
-            self._logger.info("skip-similar-content", action="matching", against=text_in_view[:100])
             for section in sorted(text_sections, key=len, reverse=True):
                 match_ratio = keyword_match_ratio([section], text_in_view)
-                self._logger.info("skip-similar-content", action="matching", sections=[section], score=match_ratio)
 
                 if match_ratio > best_match_ratio:
                     best_match_ratio = match_ratio
 
             if best_match_ratio:
-                self._logger.info("skip-similar-content", target_selector=selector, status="success")
-                await self._page.locator(selector).scroll_into_view_if_needed()
-                return True
+                return selector
 
-        self._logger.info("skip-similar-content", target_selector=None, status="failed")
-        return False
+    async def scroll_to_element(self, selector: str) -> None:
+        await self._page.locator(selector).scroll_into_view_if_needed()

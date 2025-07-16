@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ayejax Analysis Report</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background: #fafbfc;
+        color: #1f2937;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        padding: 48px;
+        border-radius: 16px;
+        margin-bottom: 32px;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(79, 70, 229, 0.15);
+      }
+
+      .header h1 {
+        font-size: 3rem;
+        font-weight: 800;
+        margin-bottom: 12px;
+        letter-spacing: -0.02em;
+      }
+
+      .header p {
+        font-size: 1.2rem;
+        opacity: 0.9;
+        font-weight: 400;
+      }
+
+      .overview {
+        background: white;
+        padding: 32px;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e7eb;
+        margin-bottom: 32px;
+      }
+
+      .overview h2 {
+        font-size: 1.75rem;
+        margin-bottom: 24px;
+        color: #111827;
+        font-weight: 700;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+
+      .stat-card {
+        background: #f9fafb;
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        transition: all 0.2s ease;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-card h3 {
+        font-size: 0.875rem;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      .stat-card .value {
+        font-size: 2.25rem;
+        font-weight: 800;
+        color: #111827;
+      }
+
+      .target-info {
+        background: #f0f9ff;
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid #0ea5e9;
+      }
+
+      .target-info h3 {
+        color: #0c4a6e;
+        margin-bottom: 16px;
+        font-weight: 600;
+      }
+
+      .target-info .url {
+        word-break: break-all;
+        color: #0369a1;
+        font-weight: 500;
+        margin-bottom: 12px;
+        font-family: "JetBrains Mono", monospace;
+        background: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #bae6fd;
+      }
+
+      .target-info .query {
+        color: #0c4a6e;
+        font-style: italic;
+      }
+
+      .section {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e7eb;
+        margin-bottom: 32px;
+        overflow: hidden;
+      }
+
+      .section-header {
+        padding: 24px 32px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb;
+      }
+
+      .section-header h2 {
+        font-size: 1.75rem;
+        color: #111827;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .section-content {
+        padding: 32px;
+      }
+
+      .steps-container {
+        display: grid;
+        gap: 24px;
+      }
+
+      .step-card {
+        background: #fafbfc;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        transition: all 0.2s ease;
+      }
+
+      .step-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .step-header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .step-number {
+        background: #4f46e5;
+        color: white;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.1rem;
+      }
+
+      .step-number.success {
+        background: #10b981;
+      }
+
+      .step-number.failed {
+        background: #ef4444;
+      }
+
+      .step-number.pending {
+        background: #f59e0b;
+      }
+
+      .step-title {
+        flex: 1;
+      }
+
+      .step-title h3 {
+        font-size: 1.25rem;
+        color: #111827;
+        margin-bottom: 4px;
+        font-weight: 600;
+      }
+
+      .step-title p {
+        color: #6b7280;
+        font-size: 0.9rem;
+      }
+
+      .step-details {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 16px;
+        border: 1px solid #e5e7eb;
+      }
+
+      .step-details h4 {
+        color: #111827;
+        margin-bottom: 12px;
+        font-weight: 600;
+        font-size: 1rem;
+      }
+
+      .detail-item {
+        margin-bottom: 12px;
+        padding: 12px;
+        background: #f9fafb;
+        border-radius: 6px;
+        border: 1px solid #e5e7eb;
+      }
+
+      .screenshot {
+        margin: 16px 0;
+        text-align: center;
+      }
+
+      .screenshot img {
+        max-width: 500px;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+      }
+
+      .final-result {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e7eb;
+        overflow: hidden;
+      }
+
+      .result-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 24px;
+      }
+
+      .result-item {
+        background: #f9fafb;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+      }
+
+      .result-item h3 {
+        color: #111827;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+
+      .result-item .value {
+        color: #374151;
+        font-weight: 500;
+        font-size: 1.1rem;
+      }
+
+      .expandable {
+        cursor: pointer;
+        color: #4f46e5;
+        margin-top: 12px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        transition: color 0.2s ease;
+      }
+
+      .expandable:hover {
+        color: #4338ca;
+      }
+
+      .expandable::before {
+        content: "▼";
+        transition: transform 0.2s ease;
+        font-size: 0.8rem;
+      }
+
+      .expandable.collapsed::before {
+        transform: rotate(-90deg);
+      }
+
+      .collapsible {
+        max-height: 500px;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+      }
+
+      .collapsible.collapsed {
+        max-height: 0;
+      }
+
+      .json-code {
+        background: #1f2937;
+        color: #f3f4f6;
+        padding: 16px;
+        border-radius: 8px;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 0.875rem;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        border: 1px solid #374151;
+      }
+
+      .status-badge {
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .status-badge.success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .status-badge.failed {
+        background: #fecaca;
+        color: #991b1b;
+      }
+
+      .status-badge.pending {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .status-badge.done {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Ayejax Analysis Report</h1>
+        <p>Generated on {{ timestamp }}</p>
+      </div>
+
+      <div class="overview">
+        <h2>Analysis Overview</h2>
+        <div class="stats">
+          <div class="stat-card">
+            <h3>Analysis Steps</h3>
+            <div class="value">{{ analysis_steps | length }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Total Cost</h3>
+            <div class="value">{{ total_cost | format_cost }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Total Tokens</h3>
+            <div class="value">{{ "{:,}".format(total_tokens) }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Result</h3>
+            <div class="value">
+              {{ "Success" if final_result else "Failed" }}
+            </div>
+          </div>
+        </div>
+
+        <div class="target-info">
+          <h3>Target Information</h3>
+          <div class="url"><strong>URL:</strong> {{ url }}</div>
+          <div class="query"><strong>Query:</strong> {{ query }}</div>
+        </div>
+      </div>
+
+      {% if analysis_steps %}
+      <div class="section">
+        <div class="section-header">
+          <h2>🔍 Analysis Steps</h2>
+        </div>
+        <div class="section-content">
+          <div class="steps-container">
+            {% for step in analysis_steps %}
+            <div class="step-card">
+              <div class="step-header-content">
+                <div class="step-number {{ step.status }}">
+                  {{ step.step_count }}
+                </div>
+                <div class="step-title">
+                  <h3>Step {{ step.step_count }}: Page Analysis</h3>
+                  <p>
+                    Analyzing page content to find relevant API calls that match
+                    the query.
+                  </p>
+                </div>
+              </div>
+
+              {% if step.llm_calls %}
+              <div class="step-details">
+                <h4>🤖 LLM Analysis</h4>
+                {% for call in step.llm_calls %} {% if call.status != 'pending'
+                %}
+                <div class="detail-item">
+                  <span class="status-badge {{ call.status }}"
+                    >{{ call.status }}</span
+                  >
+                  <strong>Tokens:</strong> {{ call.input_tokens +
+                  call.output_tokens }} {% if call.cost %}
+                  <strong>Cost:</strong> {{ call.cost | format_cost }} {% endif
+                  %} {% if call.result %}
+                  <div class="expandable collapsed">View Analysis Result</div>
+                  <div class="collapsible collapsed">
+                    <div class="json-code">{{ call.result }}</div>
+                  </div>
+                  {% endif %}
+                </div>
+                {% endif %} {% endfor %}
+              </div>
+              {% endif %} {% if step.actions %}
+              <div class="step-details">
+                <h4>⚡ Actions Taken</h4>
+                {% for action in step.actions %}
+                <div class="detail-item">
+                  <strong>Action:</strong> {{ action.step_type | title |
+                  replace('-', ' ') }} {% if action.context %}
+                  <div class="screenshot">
+                    <img
+                      src="data:image/png;base64,{{ action.context }}"
+                      alt="Screenshot"
+                    />
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %} {% if step.matching_results %}
+              <div class="step-details">
+                <h4>🎯 API Matching Results</h4>
+                {% for match in step.matching_results %} {% if match.url %}
+                <div class="detail-item">
+                  <strong>URL:</strong>
+                  <span
+                    style="
+                      font-family: &quot;JetBrains Mono&quot;, monospace;
+                      background: #f3f4f6;
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                    "
+                    >{{ match.url }}</span
+                  ><br />
+                  <strong>Match Score:</strong>
+                  <span
+                    style="color: {% if match.score > 0.7 %}#10b981{% elif match.score > 0.4 %}#f59e0b{% else %}#ef4444{% endif %}; font-weight: 600;"
+                    >{{ "%.3f" | format(match.score) }}</span
+                  >
+                </div>
+                {% endif %} {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Show pagination strategy determination -->
+      {% if strategy_determination %}
+      <div class="section">
+        <div class="section-header">
+          <h2>📄 Pagination Strategy Determination</h2>
+        </div>
+        <div class="section-content">
+          {% if strategy_determination.final_strategy %}
+          <div class="step-details" style="margin-bottom: 24px">
+            <h4>
+              🎯 Strategy Found: {{
+              strategy_determination.final_strategy.strategy | title |
+              replace('-', ' ') }}
+            </h4>
+            <div class="detail-item">
+              {% if strategy_determination.final_strategy.strategy ==
+              'next-cursor' %}
+              <strong>Cursor Key:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.cursor_key }}</span
+              ><br />
+              <strong>Pagination Patterns:</strong> {{
+              strategy_determination.final_strategy.pagination_patterns }}<br />
+              {% if strategy_determination.final_strategy.first_cursor %}
+              <strong>First Cursor:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.first_cursor }}</span
+              ><br />
+              {% endif %} {% elif strategy_determination.final_strategy.strategy
+              == 'page-offset' %}
+              <strong>Page Key:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.page_key }}</span
+              ><br />
+              <strong>Offset Key:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.offset_key }}</span
+              ><br />
+              <strong>Base Offset:</strong> {{
+              strategy_determination.final_strategy.base_offset }}<br />
+              {% elif strategy_determination.final_strategy.strategy ==
+              'limit-offset' %}
+              <strong>Limit Key:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.limit_key }}</span
+              ><br />
+              <strong>Offset Key:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.offset_key }}</span
+              ><br />
+              {% elif strategy_determination.final_strategy.strategy ==
+              'page-only' %}
+              <strong>Page Key:</strong>
+              <span
+                style="
+                  font-family: &quot;JetBrains Mono&quot;, monospace;
+                  background: #f3f4f6;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                "
+                >{{ strategy_determination.final_strategy.page_key }}</span
+              ><br />
+              {% endif %}
+            </div>
+          </div>
+          {% endif %} {% if strategy_determination.attempts %}
+          <div class="steps-container">
+            {% for attempt in strategy_determination.attempts %}
+            <div class="step-card">
+              <div class="step-header-content">
+                <div class="step-number {{ attempt.status }}">
+                  {{ attempt.step_count }}
+                </div>
+                <div class="step-title">
+                  <h3>Strategy Detection Attempt {{ attempt.step_count }}</h3>
+                  <p>
+                    {% if attempt.method and attempt.url %}{{ attempt.method }}
+                    {{ attempt.url }}{% else %}Attempting to discover pagination
+                    strategy{% endif %}
+                  </p>
+                </div>
+              </div>
+
+              {% if attempt.queries %}
+              <div class="step-details">
+                <h4>🔗 Query Parameters</h4>
+                <div class="detail-item">
+                  <div class="expandable collapsed">View Parameters</div>
+                  <div class="collapsible collapsed">
+                    <div class="json-code">
+                      {{ attempt.queries | tojson(indent=2) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endif %} {% if attempt.llm_calls %}
+              <div class="step-details">
+                <h4>🤖 LLM Analysis</h4>
+                {% for call in attempt.llm_calls %} {% if call.status !=
+                'pending' %}
+                <div class="detail-item">
+                  <span class="status-badge {{ call.status }}"
+                    >{{ call.status }}</span
+                  >
+                  <strong>Tokens:</strong> {{ call.input_tokens +
+                  call.output_tokens }} {% if call.cost %}
+                  <strong>Cost:</strong> {{ call.cost | format_cost }} {% endif
+                  %} {% if call.result %}
+                  <div class="expandable collapsed">View Analysis Result</div>
+                  <div class="collapsible collapsed">
+                    <div class="json-code">{{ call.result }}</div>
+                  </div>
+                  {% endif %}
+                </div>
+                {% endif %} {% endfor %}
+              </div>
+              {% endif %} {% if attempt.actions %}
+              <div class="step-details">
+                <h4>⚡ Actions Taken</h4>
+                {% for action in attempt.actions %}
+                <div class="detail-item">
+                  <strong>Action:</strong> {{ action.step_type | title |
+                  replace('-', ' ') }} {% if action.context %}
+                  <div class="screenshot">
+                    <img
+                      src="data:image/png;base64,{{ action.context }}"
+                      alt="Screenshot"
+                    />
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %} {% if attempt.matching_results %}
+              <div class="step-details">
+                <h4>🎯 API Matching Results</h4>
+                {% for match in attempt.matching_results %} {% if match.url %}
+                <div class="detail-item">
+                  <strong>URL:</strong>
+                  <span
+                    style="
+                      font-family: &quot;JetBrains Mono&quot;, monospace;
+                      background: #f3f4f6;
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                    "
+                    >{{ match.url }}</span
+                  ><br />
+                  <strong>Match Score:</strong>
+                  <span
+                    style="color: {% if match.score > 0.7 %}#10b981{% elif match.score > 0.4 %}#f59e0b{% else %}#ef4444{% endif %}; font-weight: 600;"
+                    >{{ "%.3f" | format(match.score) }}</span
+                  >
+                </div>
+                {% endif %} {% endfor %}
+              </div>
+              {% endif %} {% if attempt.exception %}
+              <div class="step-details">
+                <h4>❌ Error</h4>
+                <div
+                  class="detail-item"
+                  style="background: #fef2f2; border: 1px solid #fecaca"
+                >
+                  <strong>Exception:</strong> {{ attempt.exception }}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Show code generation -->
+      {% if code_generation_attempts %}
+      <div class="section">
+        <div class="section-header">
+          <h2>🔧 Code Generation</h2>
+        </div>
+        <div class="section-content">
+          <div class="step-details" style="margin-bottom: 24px">
+            <h4>📊 Generation Summary</h4>
+            <div
+              class="detail-item"
+              style="background: #f0fff4; border: 1px solid #48bb78"
+            >
+              <div>
+                <strong>Total Attempts:</strong> {{ code_generation_attempts |
+                length }}
+              </div>
+              <div>
+                <strong>Success Rate:</strong>
+                {% set successful_attempts = code_generation_attempts |
+                selectattr('validation.status', 'equalto', 'success') | list %}
+                {{ successful_attempts | length }}/{{ code_generation_attempts |
+                length }} ({{ "%.1f" | format((successful_attempts | length) /
+                (code_generation_attempts | length) * 100) }}%)
+              </div>
+              <div>
+                <strong>Total Tokens Used:</strong>
+                {% set total_tokens = code_generation_attempts |
+                map(attribute='llm_completion.input_tokens') | sum +
+                code_generation_attempts |
+                map(attribute='llm_completion.output_tokens') | sum %} {{
+                total_tokens }}
+              </div>
+            </div>
+          </div>
+
+          <div class="steps-container">
+            {% for attempt in code_generation_attempts %}
+            <div class="step-card">
+              <div class="step-header-content">
+                <div
+                  class="step-number {% if attempt.validation and attempt.validation.status == 'success' %}success{% elif attempt.validation and attempt.validation.status == 'failed' %}failed{% else %}pending{% endif %}"
+                >
+                  {{ attempt.attempt_number }}
+                </div>
+                <div class="step-title">
+                  <h3>Generation Attempt {{ attempt.attempt_number }}</h3>
+                  <p>
+                    Creating Python code to extract structured data from the API
+                    response
+                  </p>
+                </div>
+              </div>
+
+              {% if attempt.llm_completion %}
+              <div class="step-details">
+                <h4>🤖 LLM Code Generation</h4>
+                <div class="detail-item">
+                  <span class="status-badge {{ attempt.llm_completion.status }}"
+                    >{{ attempt.llm_completion.status }}</span
+                  >
+                  {% if attempt.llm_completion.status != 'pending' %}
+                  <br /><strong>Tokens:</strong> {{
+                  attempt.llm_completion.input_tokens +
+                  attempt.llm_completion.output_tokens }} ({{
+                  attempt.llm_completion.input_tokens }} in, {{
+                  attempt.llm_completion.output_tokens }} out) {% endif %} {% if
+                  attempt.llm_completion.exception %} <br /><strong
+                    >Error:</strong
+                  >
+                  {{ attempt.llm_completion.exception }} {% endif %}
+                </div>
+              </div>
+              {% endif %} {% if attempt.validation %}
+              <div class="step-details">
+                <h4>✓ Code Validation</h4>
+                <div
+                  class="detail-item {% if attempt.validation.status == 'success' %}style='background: #f0fff4; border: 1px solid #48bb78;'{% elif attempt.validation.status == 'failed' %}style='background: #fef2f2; border: 1px solid #fecaca;'{% endif %}"
+                >
+                  <span class="status-badge {{ attempt.validation.status }}"
+                    >{{ attempt.validation.status }}</span
+                  >
+                  {% if attempt.validation.status == 'success' %}
+                  <br /><span style="color: #22543d"
+                    >✓ Code executed successfully and extracted data</span
+                  >
+                  {% elif attempt.validation.status == 'failed' %}
+                  <br /><span style="color: #742a2a"
+                    >✗ Code validation failed</span
+                  >
+                  {% endif %} {% if attempt.validation.exception %}
+                  <br /><strong>Validation Error:</strong> {{
+                  attempt.validation.exception }} {% endif %}
+                </div>
+              </div>
+              {% endif %} {% if attempt.llm_completion and attempt.validation %}
+              <div class="step-details">
+                <h4>📋 Result</h4>
+                {% if attempt.validation.status == 'success' %}
+                <div
+                  class="detail-item"
+                  style="
+                    background: #f0fff4;
+                    border: 1px solid #48bb78;
+                    color: #22543d;
+                    font-weight: 500;
+                  "
+                >
+                  🎉 Attempt {{ attempt.attempt_number }} succeeded - extraction
+                  code generated and validated
+                </div>
+                {% elif attempt.validation.status == 'failed' %}
+                <div
+                  class="detail-item"
+                  style="
+                    background: #fef2f2;
+                    border: 1px solid #fecaca;
+                    color: #742a2a;
+                    font-weight: 500;
+                  "
+                >
+                  ❌ Attempt {{ attempt.attempt_number }} failed - retrying with
+                  different approach
+                </div>
+                {% endif %}
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Show final results -->
+      <div class="section">
+        <div class="section-header">
+          <h2>🎯 Analysis Results</h2>
+        </div>
+        <div class="section-content">
+          <!-- Success/Failure Status -->
+          <div
+            class="result-status"
+            style="margin-bottom: 30px; padding: 20px; border-radius: 8px; {% if final_result %}background: #f0fff4; border: 2px solid #48bb78;{% else %}background: #fef2f2; border: 2px solid #f56565;{% endif %}"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 15px;
+              "
+            >
+              {% if final_result %}
+              <span style="font-size: 2rem">✅</span>
+              <h3 style="margin: 0; color: #22543d; font-size: 1.5rem">
+                Analysis Successful
+              </h3>
+              {% else %}
+              <span style="font-size: 2rem">❌</span>
+              <h3 style="margin: 0; color: #742a2a; font-size: 1.5rem">
+                Analysis Failed
+              </h3>
+              {% endif %}
+            </div>
+            <p
+              style="margin: 0; {% if final_result %}color: #2f855a;{% else %}color: #c53030;{% endif %}"
+            >
+              {% if final_result %} Successfully identified the target API
+              endpoint and generated extraction code. {% else %} Unable to find
+              a relevant API endpoint for the specified query. {% endif %}
+            </p>
+          </div>
+
+          <!-- Main Results Grid -->
+          <div class="result-details">
+            {% if final_result %}
+            <div class="result-item" style="grid-column: 1 / -1">
+              <h3>🔗 API Endpoint</h3>
+              <div
+                class="value"
+                style="
+                  word-break: break-all;
+                  font-family: monospace;
+                  background: #f7fafc;
+                  padding: 10px;
+                  border-radius: 4px;
+                  border: 1px solid #e2e8f0;
+                "
+              >
+                {{ final_result.api_url }}
+              </div>
+            </div>
+            {% endif %} {% if pagination_strategy %}
+            <div class="result-item">
+              <h3>📄 Pagination Strategy</h3>
+              <div class="value">
+                {{ pagination_strategy.strategy | title | replace('-', ' ') }}
+              </div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                {% if pagination_strategy.strategy == 'next-cursor' %}
+                <strong>Cursor Key:</strong> {{ pagination_strategy.cursor_key
+                }}<br />
+                {% if pagination_strategy.first_cursor %}
+                <strong>First Cursor:</strong> {{
+                pagination_strategy.first_cursor }}<br />
+                {% endif %}
+                <strong>Patterns Found:</strong> {{
+                pagination_strategy.pagination_patterns }} {% elif
+                pagination_strategy.strategy == 'page-offset' %}
+                <strong>Page Key:</strong> {{ pagination_strategy.page_key }}<br />
+                <strong>Offset Key:</strong> {{ pagination_strategy.offset_key
+                }}<br />
+                <strong>Base Offset:</strong> {{ pagination_strategy.base_offset
+                }} {% elif pagination_strategy.strategy == 'limit-offset' %}
+                <strong>Limit Key:</strong> {{ pagination_strategy.limit_key
+                }}<br />
+                <strong>Offset Key:</strong> {{ pagination_strategy.offset_key
+                }} {% elif pagination_strategy.strategy == 'page-only' %}
+                <strong>Page Key:</strong> {{ pagination_strategy.page_key }} {%
+                endif %}
+              </div>
+            </div>
+            {% endif %}
+
+            <div class="result-item">
+              <h3>🔧 Code Generation</h3>
+              {% if code_generation_success %}
+              <div class="value" style="color: #22543d">✅ Success</div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                Generated and validated extraction code
+              </div>
+              {% else %}
+              <div class="value" style="color: #742a2a">❌ Failed</div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                Unable to generate working extraction code
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="result-item">
+              <h3>⏱️ Analysis Duration</h3>
+              <div class="value">{{ analysis_duration }}</div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                Total time from start to finish
+              </div>
+            </div>
+
+            <div class="result-item">
+              <h3>🔍 Analysis Steps</h3>
+              <div class="value">{{ analysis_steps | length }}</div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                Page interactions performed
+              </div>
+            </div>
+
+            <div class="result-item">
+              <h3>💰 Total Cost</h3>
+              <div class="value">{{ total_cost | format_cost }}</div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                LLM API usage cost
+              </div>
+            </div>
+
+            <div class="result-item">
+              <h3>🎯 Token Usage</h3>
+              <div class="value">{{ "{:,}".format(total_tokens) }}</div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                Total tokens consumed
+              </div>
+            </div>
+
+            {% if strategy_determination and strategy_determination.attempts %}
+            <div class="result-item">
+              <h3>🔄 Strategy Attempts</h3>
+              <div class="value">
+                {{ strategy_determination.attempts | length }}
+              </div>
+              <div style="margin-top: 10px; font-size: 0.9em; color: #4a5568">
+                Pagination detection attempts
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Performance Summary -->
+          <div
+            class="performance-summary"
+            style="
+              margin-top: 30px;
+              padding: 20px;
+              background: #f8fafc;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            "
+          >
+            <h3 style="margin: 0 0 15px 0; color: #2d3748">
+              📊 Performance Summary
+            </h3>
+            <div
+              style="
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+              "
+            >
+              <div>
+                <strong>Efficiency:</strong>
+                {% if analysis_steps | length <= 5 %}
+                <span style="color: #22543d">Excellent</span>
+                {% elif analysis_steps | length <= 10 %}
+                <span style="color: #2b6cb0">Good</span>
+                {% else %}
+                <span style="color: #d69e2e">Average</span>
+                {% endif %} ({{ analysis_steps | length }} steps)
+              </div>
+              <div>
+                <strong>Cost Efficiency:</strong>
+                {% if total_cost < 0.10 %}
+                <span style="color: #22543d">Excellent</span>
+                {% elif total_cost < 0.25 %}
+                <span style="color: #2b6cb0">Good</span>
+                {% else %}
+                <span style="color: #d69e2e">Average</span>
+                {% endif %} ({{ total_cost | format_cost }})
+              </div>
+              <div>
+                <strong>Code Generation:</strong>
+                {% if code_generation_success %}
+                <span style="color: #22543d">Success</span>
+                {% else %}
+                <span style="color: #742a2a">Failed</span>
+                {% endif %} ({{ code_generation_attempts | length }} attempts)
+              </div>
+              <div>
+                <strong>Speed:</strong>
+                {% if analysis_duration != 'Unknown' %} {% set duration_seconds
+                = analysis_duration.replace('s', '') | float %} {% if
+                duration_seconds < 60 %}
+                <span style="color: #22543d">Fast</span>
+                {% elif duration_seconds < 180 %}
+                <span style="color: #2b6cb0">Moderate</span>
+                {% else %}
+                <span style="color: #d69e2e">Slow</span>
+                {% endif %} {% else %}
+                <span style="color: #718096">Unknown</span>
+                {% endif %} ({{ analysis_duration }})
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let currentStep = 0;
+      let currentStrategyStep = 0;
+      let currentCodeStep = 0;
+
+      document.addEventListener("DOMContentLoaded", function () {
+        // Initialize expandable sections
+        const expandables = document.querySelectorAll(".expandable");
+        expandables.forEach((expandable) => {
+          expandable.addEventListener("click", function () {
+            this.classList.toggle("collapsed");
+            const content = this.nextElementSibling;
+            if (content && content.classList.contains("collapsible")) {
+              content.classList.toggle("collapsed");
+            }
+          });
+        });
+
+        // Initialize navigation and heights
+        updateNavigation();
+
+        // Delay height initialization to ensure DOM is fully rendered
+        setTimeout(() => {
+          initializeContainerHeights();
+        }, 100);
+      });
+
+      function navigateStep(direction) {
+        const stepsTrack = document.getElementById("steps-track");
+        const stepsContainer = stepsTrack?.parentElement;
+        const totalSteps = stepsTrack ? stepsTrack.children.length : 0;
+
+        if (totalSteps === 0) return;
+
+        currentStep += direction;
+        if (currentStep < 0) currentStep = 0;
+        if (currentStep >= totalSteps) currentStep = totalSteps - 1;
+
+        const translateX = -currentStep * 100;
+        stepsTrack.style.transform = `translateX(${translateX}%)`;
+
+        // Adjust container height to current step
+        if (stepsContainer && stepsTrack.children[currentStep]) {
+          const currentStepCard =
+            stepsTrack.children[currentStep].querySelector(".step-card");
+          if (currentStepCard) {
+            const cardHeight = currentStepCard.offsetHeight;
+            stepsContainer.style.height = `${cardHeight + 20}px`;
+          }
+        }
+
+        document.getElementById("current-step").textContent = currentStep + 1;
+        updateNavigation();
+      }
+
+      function navigateStrategyStep(direction) {
+        const stepsTrack = document.getElementById("strategy-steps-track");
+        const stepsContainer = stepsTrack?.parentElement;
+        const totalSteps = stepsTrack ? stepsTrack.children.length : 0;
+
+        if (totalSteps === 0) return;
+
+        currentStrategyStep += direction;
+        if (currentStrategyStep < 0) currentStrategyStep = 0;
+        if (currentStrategyStep >= totalSteps)
+          currentStrategyStep = totalSteps - 1;
+
+        const translateX = -currentStrategyStep * 100;
+        stepsTrack.style.transform = `translateX(${translateX}%)`;
+
+        // Adjust container height to current step
+        if (stepsContainer && stepsTrack.children[currentStrategyStep]) {
+          const currentStepCard =
+            stepsTrack.children[currentStrategyStep].querySelector(
+              ".step-card",
+            );
+          if (currentStepCard) {
+            const cardHeight = currentStepCard.offsetHeight;
+            stepsContainer.style.height = `${cardHeight + 20}px`;
+          }
+        }
+
+        document.getElementById("current-strategy-step").textContent =
+          currentStrategyStep + 1;
+        updateStrategyNavigation();
+      }
+
+      function navigateCodeStep(direction) {
+        const stepsTrack = document.getElementById("code-steps-track");
+        const stepsContainer = stepsTrack?.parentElement;
+        const totalSteps = stepsTrack ? stepsTrack.children.length : 0;
+
+        if (totalSteps === 0) return;
+
+        currentCodeStep += direction;
+        if (currentCodeStep < 0) currentCodeStep = 0;
+        if (currentCodeStep >= totalSteps) currentCodeStep = totalSteps - 1;
+
+        const translateX = -currentCodeStep * 100;
+        stepsTrack.style.transform = `translateX(${translateX}%)`;
+
+        // Adjust container height to current step
+        if (stepsContainer && stepsTrack.children[currentCodeStep]) {
+          const currentStepCard =
+            stepsTrack.children[currentCodeStep].querySelector(".step-card");
+          if (currentStepCard) {
+            const cardHeight = currentStepCard.offsetHeight;
+            stepsContainer.style.height = `${cardHeight + 20}px`;
+          }
+        }
+
+        document.getElementById("current-code-step").textContent =
+          currentCodeStep + 1;
+        updateCodeNavigation();
+      }
+
+      function updateNavigation() {
+        const stepsTrack = document.getElementById("steps-track");
+        const totalSteps = stepsTrack ? stepsTrack.children.length : 0;
+        const prevBtn = document.getElementById("prev-btn");
+        const nextBtn = document.getElementById("next-btn");
+
+        if (prevBtn) prevBtn.disabled = currentStep === 0;
+        if (nextBtn) nextBtn.disabled = currentStep === totalSteps - 1;
+      }
+
+      function updateStrategyNavigation() {
+        const stepsTrack = document.getElementById("strategy-steps-track");
+        const totalSteps = stepsTrack ? stepsTrack.children.length : 0;
+        const prevBtn = document.getElementById("prev-strategy-btn");
+        const nextBtn = document.getElementById("next-strategy-btn");
+
+        if (prevBtn) prevBtn.disabled = currentStrategyStep === 0;
+        if (nextBtn) nextBtn.disabled = currentStrategyStep === totalSteps - 1;
+      }
+
+      function updateCodeNavigation() {
+        const stepsTrack = document.getElementById("code-steps-track");
+        const totalSteps = stepsTrack ? stepsTrack.children.length : 0;
+        const prevBtn = document.getElementById("prev-code-btn");
+        const nextBtn = document.getElementById("next-code-btn");
+
+        if (prevBtn) prevBtn.disabled = currentCodeStep === 0;
+        if (nextBtn) nextBtn.disabled = currentCodeStep === totalSteps - 1;
+      }
+
+      function initializeContainerHeights() {
+        // Set initial height for main analysis steps
+        const stepsTrack = document.getElementById("steps-track");
+        const stepsContainer = stepsTrack?.parentElement;
+        if (stepsContainer && stepsTrack?.children[0]) {
+          const firstStepCard =
+            stepsTrack.children[0].querySelector(".step-card");
+          if (firstStepCard) {
+            const cardHeight = firstStepCard.offsetHeight;
+            stepsContainer.style.height = `${cardHeight + 20}px`;
+          }
+        }
+
+        // Set initial height for strategy steps
+        const strategyTrack = document.getElementById("strategy-steps-track");
+        const strategyContainer = strategyTrack?.parentElement;
+        if (strategyContainer && strategyTrack?.children[0]) {
+          const firstStrategyCard =
+            strategyTrack.children[0].querySelector(".step-card");
+          if (firstStrategyCard) {
+            const cardHeight = firstStrategyCard.offsetHeight;
+            strategyContainer.style.height = `${cardHeight + 20}px`;
+          }
+        }
+
+        // Set initial height for code steps
+        const codeTrack = document.getElementById("code-steps-track");
+        const codeContainer = codeTrack?.parentElement;
+        if (codeContainer && codeTrack?.children[0]) {
+          const firstCodeCard =
+            codeTrack.children[0].querySelector(".step-card");
+          if (firstCodeCard) {
+            const cardHeight = firstCodeCard.offsetHeight;
+            codeContainer.style.height = `${cardHeight + 20}px`;
+          }
+        }
+      }
+
+      // Keyboard navigation
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          navigateStep(-1);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          navigateStep(1);
+        }
+      });
+    </script>
+  </body>
+</html>
