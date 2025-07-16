@@ -1,0 +1,17 @@
+<div class="details">
+  <strong>{{ event.event_type | title }} Event</strong>
+
+  {% if event.action %}
+  <div class="details-grid">
+    <div class="details-item"><strong>Action:</strong> {{ event.action }}</div>
+    {% if event.status %}
+    <div class="details-item"><strong>Status:</strong> {{ event.status }}</div>
+    {% endif %}
+  </div>
+  {% endif %} {% if event.data %}
+  <div class="expandable collapsed">Event Data</div>
+  <div class="collapsible">
+    <div class="json-view">{{ event.data | tojson(indent=2) }}</div>
+  </div>
+  {% endif %}
+</div>
