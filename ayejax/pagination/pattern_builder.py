@@ -12,7 +12,7 @@ class Pattern(BaseModel):
 
 
 def get_patterns(input: str, output: str) -> list[Pattern]:
-    """Extract patterns from a single input/output pair."""
+    """Extract patterns from a single input/output pair, sorted by accuracy."""
     patterns = []
 
     # Find the position of output in input
@@ -30,11 +30,19 @@ def get_patterns(input: str, output: str) -> list[Pattern]:
             pattern = Pattern(before=before[-delim_len:], after=after[:delim_len])
             patterns.append(pattern)
 
-    return patterns
+    # Score patterns by testing them against the original input/output
+    pattern_scores = []
+    for pattern in patterns:
+        score = 1.0 if test_pattern(input, pattern) == output else 0.0
+        pattern_scores.append((pattern, score))
+
+    # Sort by score (highest first) and return patterns
+    pattern_scores.sort(key=lambda x: x[1], reverse=True)
+    return [pattern for pattern, _ in pattern_scores]
 
 
-def extract_with_pattern(input: str, pattern: Pattern) -> str | None:
-    """Extract output from input using the given pattern."""
+def test_pattern(input: str, pattern: Pattern) -> str | None:
+    """Test a pattern against the input and get output if any."""
     full_pattern = re.escape(pattern.before) + r"(.*?)" + re.escape(pattern.after)
     matches = re.findall(full_pattern, input)
     return matches[0] if matches else None
