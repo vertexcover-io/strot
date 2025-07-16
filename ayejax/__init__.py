@@ -1,4 +1,5 @@
 import contextlib
+import io
 import re
 from contextlib import asynccontextmanager, suppress
 from json import dumps as json_dumps
@@ -306,48 +307,93 @@ class _AnalyzerContext:
                 return request.post_data
             return request.queries
 
-        async def build_strategy_info(entries: dict[str, Any]) -> tuple[pagination.StrategyInfo | None, Response]:
+        async def build_strategy_info(entries: dict[str, Any]) -> pagination.StrategyInfo | None:
             page_key = get_key(pagination.PAGE_KEY_CANDIDATES, entries)
             offset_key = get_key(pagination.OFFSET_KEY_CANDIDATES, entries)
             limit_key = get_key(pagination.LIMIT_KEY_CANDIDATES, entries)
 
             if page_key and offset_key:
+                base_offset = int(entries[offset_key]) // int(entries[page_key])
+                self._logger.info(
+                    "determine-strategy",
+                    action="build-strategy-info",
+                    strategy="page-offset",
+                    page_key=page_key,
+                    offset_key=offset_key,
+                    base_offset=base_offset,
+                )
                 return pagination.strategy.PageOffsetInfo(
                     page_key=page_key,
                     offset_key=offset_key,
-                    base_offset=int(entries[offset_key]) // int(entries[page_key]),
-                ), response
+                    base_offset=base_offset,
+                )
             elif limit_key and offset_key:
+                self._logger.info(
+                    "determine-strategy",
+                    action="build-strategy-info",
+                    strategy="limit-offset",
+                    limit_key=limit_key,
+                    offset_key=offset_key,
+                )
                 return pagination.strategy.LimitOffsetInfo(
                     limit_key=limit_key,
                     offset_key=offset_key,
-                ), response
+                )
             elif page_key:
-                return pagination.strategy.PageOnlyInfo(page_key=page_key), response
+                self._logger.info(
+                    "determine-strategy",
+                    action="build-strategy-info",
+                    strategy="page-only",
+                    page_key=page_key,
+                )
+                return pagination.strategy.PageOnlyInfo(page_key=page_key)
 
             self._captured_responses.clear()  # clear so it does not match previous responses
-            for _ in range(3):  # Three tries
+            for attempt in range(getattr(self, "attempts_left", 20)):
                 try:
+                    self._logger.info("determine-strategy", action="run-step", step_count=attempt, status="pending")
                     new_response = await self.run_step(query)
                 except Exception as e:
-                    self._logger.info("determine-strategy", action="run-step", status="failed", exception=e)
+                    self._logger.info(
+                        "determine-strategy", action="run-step", step_count=attempt, status="failed", exception=e
+                    )
                     continue
 
                 if not new_response:
                     continue
 
+                self._logger.info(
+                    "determine-strategy",
+                    action="run-step",
+                    step_count=attempt,
+                    status="success",
+                    method=new_response.request.method,
+                    url=new_response.request.url,
+                    queries=new_response.request.queries,
+                    data=new_response.request.post_data,
+                )
                 new_entries = get_entries(new_response.request)
                 cursor_key = get_key(pagination.NEXT_CURSOR_KEY_CANDIDATES, new_entries)
                 if cursor_key is None:  # The request doesn't have any pagination available
-                    return None, new_response
+                    return None
 
+                first_cursor = entries.get(cursor_key)
+                pagination_patterns = pagination.get_patterns(response.value, new_entries[cursor_key])
+                self._logger.info(
+                    "determine-strategy",
+                    action="build-strategy-info",
+                    strategy="next-cursor",
+                    cursor_key=cursor_key,
+                    first_cursor=first_cursor,
+                    pagination_patterns=len(pagination_patterns),
+                )
                 return pagination.strategy.NextCursorInfo(
                     cursor_key=cursor_key,
-                    first_value=entries.get(cursor_key),
-                    patterns=pagination.get_patterns(response.value, new_entries[cursor_key]),
-                ), new_response
+                    first_cursor=entries.get(cursor_key),
+                    patterns=pagination_patterns,
+                )
 
-            return None, response
+            return None
 
         return await build_strategy_info(get_entries(response.request))
 
@@ -377,7 +423,7 @@ class _AnalyzerContext:
         if sections := result.text_sections:
             self._logger.info("run-step", step="text-processing", context=encode_image(screenshot))
             for response in self._captured_responses:
-                self._logger.info("run-step", action="matching", against=response.value[:50])
+                self._logger.info("run-step", action="matching", against=response.value[:100])
                 score = keyword_match_ratio(sections, response.value)
                 self._logger.info("run-step", action="matching", url=response.request.url, score=score)
                 if score < 0.4:
@@ -389,7 +435,10 @@ class _AnalyzerContext:
                 return
 
         def get_context(point: Point) -> bytes:
-            return encode_image(draw_point_on_image(screenshot, point).tobytes())
+            image = draw_point_on_image(screenshot, point)
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            return encode_image(buffer.getvalue())
 
         if result.close_overlay_popup_coords:
             self._logger.info(
@@ -423,18 +472,30 @@ class _AnalyzerContext:
         output_schema: type[BaseModel],
         max_attempts: int = 30,
     ) -> Output | None:
-        while max_attempts:
+        for attempt in range(1, max_attempts + 1):
             try:
+                self._logger.info("analysis", action="run-step", step_count=attempt, status="pending")
                 response = await self.run_step(query)
             except Exception as e:
-                self._logger.info("analysis", action="run-step", status="failed", exception=e)
+                self._logger.info("analysis", action="run-step", step_count=attempt, status="failed", exception=e)
                 response = None
 
-            max_attempts -= 1
             if not response:
                 continue
 
-            pagination_strategy, response = await self.determine_pagination_strategy(response, query)
+            self._logger.info(
+                "analysis",
+                action="run-step",
+                step_count=attempt,
+                status="success",
+                method=response.request.method,
+                url=response.request.url,
+                queries=response.request.queries,
+                data=response.request.post_data,
+            )
+
+            self.attempts_left = max_attempts - attempt
+            pagination_strategy = await self.determine_pagination_strategy(response, query)
             code, items_count = await self.get_extraction_code_and_items_count(output_schema, response.value)
 
             # Filter out headers to ignore
@@ -522,7 +583,7 @@ class _JSContext:
             reverse=True,
         ):
             best_match_ratio = 0.0
-            self._logger.info("skip-similar-content", action="matching", against=text_in_view[:50])
+            self._logger.info("skip-similar-content", action="matching", against=text_in_view[:100])
             for section in sorted(text_sections, key=len, reverse=True):
                 match_ratio = keyword_match_ratio([section], text_in_view)
                 self._logger.info("skip-similar-content", action="matching", sections=[section], score=match_ratio)
