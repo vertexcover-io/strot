@@ -1,6 +1,48 @@
 EXCLUDE_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "collect"}
 """URL filtering keywords"""
 
+ANALYSIS_PROMPT_TEMPLATE = """
+TASK: Extract text sections from webpage screenshot that match the user's data scraping requirement.
+
+CRITICAL INSTRUCTIONS:
+1. ONLY extract text sections that are DIRECTLY RELEVANT to the user requirement
+2. Text sections must be EXACT MATCHES visible in the screenshot
+3. Each text entry should not be more than 15 words
+4. These text sections will be used to find matching AJAX API responses
+
+WHAT TO EXTRACT:
+- Product names, prices, descriptions, reviews, titles, etc. (actual data content)
+- Text that represents the specific data the user wants to scrape
+
+WHAT TO IGNORE:
+- Headers, footers, breadcrumbs
+- Login/signup forms, search bars, generic buttons
+- Advertisements, cookie banners, unrelated content
+
+ACTIONS TO CHOOSE FROM (ORDERED BY PRIORITY):
+1. If you find pagination controls (Next, More, page numbers) that could load more relevant content:
+   → Set "load_more_content_coords" to the pagination element coordinates
+   → Leave other fields null
+
+2. If you find relevant text sections:
+   → Set "text_sections" to the list of extracted text
+   → Leave coordinate fields null
+
+3. If you see an overlay popup (cookie banner, newsletter signup, login modal) that blocks content (Ignore If popup body contains relevant content):
+   → Set "close_overlay_popup_coords" to the dismiss/close button coordinates
+   → Leave other fields null
+
+4. If you find a clickable element or button that could lead to page sections likely containing relevant content:
+   → Set "skip_to_content_coords" to the element coordinates
+   → Leave other fields null
+
+RESPONSE FORMAT:
+{output_schema}
+
+USER REQUIREMENT:
+{query}
+"""
+
 ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION = """\
 Your task is to precisely extract keywords from the provided screenshot of a webpage that are directly relevant to the user's data scraping requirement. These keywords should represent the actual data being scraped and must exactly match those visible in the screenshot.
 
@@ -18,31 +60,6 @@ Strictly adhere to the following instructions:
   - Select the MOST RELEVANT navigation element that would likely lead to finding the required keywords
   - Assign the coordinates of this element to "navigation_element_point"
   - If no relevant navigation element is found, set this to null
-
-Provide your response in JSON matching this schema:
-
-{
-  "keywords": ["<keyword1>", "<keyword2>", ...],
-  "popup_element_point": {"x": <x>, "y": <y>} or null,
-  "navigation_element_point": {"x": <x>, "y": <y>} or null
-}
-
-User Requirement: %s"""
-
-ANALYSIS_PROMPT_TEMPLATE_WITHOUT_SECTION_NAVIGATION = """\
-Your task is to precisely extract keywords from the provided screenshot of a webpage that are directly relevant to the user's data scraping requirement. These keywords should represent the actual data being scraped and must exactly match those visible in the screenshot.
-
-Strictly adhere to the following instructions:
-- Inspect the screenshot for keywords that are directly relevant to the user's data scraping requirement below.
-- Only extract keywords that represent the actual data content the user wants to scrape (e.g., product names, prices, descriptions, etc.).
-- Ignore generic website elements like navigation, headers, footers, or unrelated content.
-- If an overlay popup is visible in the screenshot, identify the "close" or "allow" clickable element's coordinates and assign them to "popup_element_point". If no overlay popup is present, set this to null.
-- If and only if no suitable data-relevant keywords are found:
-  - set "keywords" to an empty list.
-  - ONLY look for pagination controls: Page numbers (1, 2, 3...), "Next" button, ">" arrow, "More" button, or pagination dots
-  - Do NOT look for section navigation or content expansion elements
-  - If a pagination control is found, assign its coordinates to "navigation_element_point"
-  - If no pagination control is found, set "navigation_element_point" to null
 
 Provide your response in JSON matching this schema:
 

@@ -10,6 +10,8 @@ from json_repair import repair_json
 from PIL import Image, ImageDraw
 from rapidfuzz import fuzz
 
+from ayejax.types import Point
+
 
 def normalize_filename(url: str) -> str:
     """
@@ -135,8 +137,7 @@ def encode_image(image: bytes) -> str:
 
 def draw_point_on_image(
     image_bytes: bytes,
-    x: int,
-    y: int,
+    coords: Point,
     radius: int = 5,
     color: "tuple[int, int, int] | str" = "red",
 ):
@@ -152,8 +153,7 @@ def draw_point_on_image(
 
     Args:
         image_bytes: Raw bytes of the image (e.g. as read from a file or HTTP response).
-        x:           X-coordinate (pixels) of the centre of the point.
-        y:           Y-coordinate (pixels) of the centre of the point.
+        coords:      X and Y coordinates (pixels) of the centre of the point.
         radius:      Radius of the circle to draw in pixels. Defaults to ``5``.
         color:       Fill colour for the circle. Accepts an ``(R, G, B)`` tuple
                       or any Pillow-compatible colour string (default ``"red"``).
@@ -167,7 +167,7 @@ def draw_point_on_image(
 
     fill_color = tuple(color) if isinstance(color, tuple) else color
 
-    bbox = (x - radius, y - radius, x + radius, y + radius)
+    bbox = (coords.x - radius, coords.y - radius, coords.x + radius, coords.y + radius)
     draw.ellipse(bbox, fill=fill_color)
 
     return img

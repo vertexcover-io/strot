@@ -1,12 +1,11 @@
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ayejax.llm import LLMCompletion
 from ayejax.pagination.strategy import StrategyInfo
 
-__all__ = ("AnalysisResult", "Request", "Response", "Metadata", "Output")
+__all__ = ("AnalysisResult", "Request", "Response", "Output")
 
 
 class PydanticModel(BaseModel):
@@ -29,9 +28,21 @@ class Point(BaseModel):
 
 
 class AnalysisResult(PydanticModel):
-    keywords: list[str] = []
-    navigation_element_point: Point | None = None
-    popup_element_point: Point | None = None
+    close_overlay_popup_coords: Point | None = Field(
+        None,
+        description="Coordinates of dismiss button for overlay popups (cookie banners, modals, ads) that block content. Only set if popup is NOT related to user requirements.",
+    )
+    skip_to_content_coords: Point | None = Field(
+        None, description="Coordinates of element or button which might lead to the required content."
+    )
+    load_more_content_coords: Point | None = Field(
+        None,
+        description="Coordinates of pagination controls (Next, More, page numbers, arrows) that load additional relevant content.",
+    )
+    text_sections: list[str] | None = Field(
+        None,
+        description="List of exact text strings visible in screenshot that match user requirements (product names, prices, descriptions, etc.).",
+    )
 
 
 class Request(PydanticModel):
@@ -45,11 +56,6 @@ class Request(PydanticModel):
 class Response(PydanticModel):
     value: str
     request: Request
-
-
-class Metadata(PydanticModel):
-    extracted_keywords: list[str]
-    completions: list[LLMCompletion]
 
 
 class Output(PydanticModel):

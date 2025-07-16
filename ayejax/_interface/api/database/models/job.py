@@ -1,5 +1,5 @@
 from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -15,7 +15,6 @@ class Job(Base):
 
     status = Column(String(20), nullable=False)
     message = Column(Text)
-    analysis_metadata = Column(JSON)
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     completed_at = Column(DateTime(timezone=True))
 
