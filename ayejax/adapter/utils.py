@@ -25,14 +25,12 @@ def build_description(docstring: Docstring) -> str | None:
     """
 
     result = []
-    if docstring.short_description:
-        result.append(docstring.short_description)
-        if docstring.blank_after_short_description:
-            result.append("")
-    if docstring.long_description:
-        result.append(docstring.long_description)
+    if s_desc := (docstring.short_description or "").strip():
+        result.append(s_desc)
+    if l_desc := (docstring.long_description or "").strip():
+        result.append(l_desc.replace("\n", " "))
 
-    return "\n".join(result).strip("\n") if result else None
+    return " ".join(result).strip("\n") if result else None
 
 
 def update_object_schema(__type: type, schema: dict[str, t.Any]) -> dict[str, t.Any]:

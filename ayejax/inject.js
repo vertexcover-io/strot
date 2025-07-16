@@ -507,6 +507,8 @@ function mapLastVisibleSiblings(surfaceRatio = 1.0) {
 
 // Expose to window
 window.scrollToNextView = scrollToNextView;
+window.getElementsInDOM = getElementsInDOM;
+window.getElementsInView = getElementsInView;
 window.mapLastVisibleSiblings = mapLastVisibleSiblings;
 window.generateCSSSelector = generateCSSSelector;
 window.scriptInjected = true;

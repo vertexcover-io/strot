@@ -34,6 +34,12 @@ boto3_session = boto3.Session(
     region_name=settings.AWS_REGION,
 )
 
+s3_handler_config = S3HandlerConfig(
+    boto3_session=boto3_session,
+    bucket_name=settings.AWS_S3_LOG_BUCKET,
+    endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+)
+
 
 class CreateJobRequest(BaseModel):
     url: HttpUrl
@@ -148,45 +154,33 @@ async def create_output(request: CreateJobRequest, output: AyejaxOutput, db: DBS
 async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: Browser):
     """Background task to process job request"""
 
-    s3_handler_config = S3HandlerConfig(
-        boto3_session=boto3_session,
-        bucket_name=settings.AWS_S3_LOG_BUCKET,
-        endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-    )
-
-    logger = get_logger(f"job-{job_id!s}", s3_handler_config, job_id=str(job_id))
-
     async with sessionmanager.session() as db:
         try:
-            logger.info("Starting job analysis", url=str(request.url), tag=request.tag)
-
-            # Use the job-aware logger for ayejax.analyze to capture ALL logs in S3
-            output, metadata = await ayejax.analyze(str(request.url), request.tag, browser=browser, logger=logger)
+            output = await ayejax.analyze(
+                str(request.url),
+                request.tag,
+                browser=browser,
+                logger=get_logger(f"job-{job_id!s}", s3_handler_config, job_id=str(job_id)),
+            )
 
             result = await db.execute(select(Job).where(Job.id == job_id))
             job = result.scalar_one_or_none()
             if not job:
-                logger.error("Job not found in database")
                 return
 
             job.completed_at = datetime.now(timezone.utc)
-            job.analysis_metadata = metadata.model_dump() if metadata else None
 
             if output is not None:
-                logger.info("Creating output", has_output=True)
                 job.output_id = await create_output(request, output, db)
                 job.status = "ready"
                 job.message = "Output created successfully"
-                logger.info("Job completed successfully", status="ready")
             else:
                 job.status = "failed"
                 job.message = "No relevant request found"
-                logger.info("Job failed - no relevant request found", status="failed")
 
             await db.commit()
 
         except Exception as e:
-            logger.error("bg-process", exception=e)
             result = await db.execute(select(Job).where(Job.id == job_id))
             job = result.scalar_one_or_none()
             if job:

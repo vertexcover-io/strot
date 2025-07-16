@@ -30,14 +30,12 @@ async def main(
     filename = normalize_filename(url)
     logger = get_logger(filename, FileHandlerConfig(directory="."))
 
-    output, metadata = await ayejax.analyze(url, tag, logger=logger)
+    output = await ayejax.analyze(url, tag, logger=logger)
     if output is None:
         raise ValueError("No relevant request found")
 
     with open(f"{filename}.json", "w") as f:
         json.dump(output.model_dump(), f)
-
-    logger.info("calculate-total-cost", cost_in_usd=sum(c.calculate_cost(3.0, 15.0) for c in metadata.completions))
 
 
 @app.command

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = "minioadmin"
     AWS_REGION: str = "us-east-1"
     AWS_S3_ENDPOINT_URL: str = "http://localhost:9000"
-    AWS_S3_LOG_BUCKET: str = "ayejax-logs"
+    AWS_S3_LOG_BUCKET: str = "job-logs"
 
     EXTERNAL_API_REQUEST_TIMEOUT: int = 30
 

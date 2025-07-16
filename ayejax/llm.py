@@ -8,7 +8,6 @@ import openai
 from pydantic import BaseModel, PrivateAttr, model_validator
 
 from ayejax.helpers import encode_image, extract_json, guess_image_type
-from ayejax.logging import LoggerType
 
 LLMProvider = Literal["openai", "anthropic", "groq", "open-router"]
 
@@ -75,13 +74,9 @@ class LLMClient:
         provider: LLMProvider,
         model: str,
         api_key: str | None = None,
-        logger: LoggerType,
     ):
         self.__provider = provider.lower()
         self.__model = model
-        self.logger = logger
-
-        self.logger.info("init-llm", provider=provider, model=model)
 
         client: anthropic.AsyncClient | openai.AsyncClient
         match self.__provider:
@@ -121,13 +116,11 @@ class LLMClient:
         Returns:
             LLMCompletion: LLM completion.
         """
-        self.logger.info("llm-completion", json=json)
         if self.provider == "anthropic":
             completion = await self.__request_anthropic_client(input, json=json)
         else:
             completion = await self.__request_openai_client(input, json=json)
 
-        self.logger.info("llm-completion", input_tokens=completion.input_tokens, output_tokens=completion.output_tokens)
         return completion
 
     async def __request_openai_client(self, input: LLMInput, json: bool) -> LLMCompletion:

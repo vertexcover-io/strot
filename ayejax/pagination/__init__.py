@@ -1,7 +1,7 @@
-from .pattern_builder import PatternBuilder
+from .pattern_builder import get_patterns
 from .strategy import StrategyInfo
 
-__all__ = ("StrategyInfo", "PatternBuilder")
+__all__ = ("StrategyInfo", "get_patterns")
 
 PAGE_KEY_CANDIDATES = {
     "page",
@@ -19,4 +19,4 @@ LIMIT_KEY_CANDIDATES = {"limit", "take", "page_size", "per_page"}
 
 OFFSET_KEY_CANDIDATES = {"offset"}
 
-NEXT_CURSOR_KEY_CANDIDATES = {"cursor", "next_cursor", "nextcursor", "next", "after", "page_after", "pageafter"}
+NEXT_CURSOR_KEY_CANDIDATES = {"page_after", "cursor", "next_cursor", "nextcursor", "next", "after", "pageafter"}
