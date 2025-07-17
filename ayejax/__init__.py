@@ -1,5 +1,6 @@
 import contextlib
 import io
+import os
 import re
 from contextlib import asynccontextmanager, suppress
 from json import dumps as json_dumps
@@ -176,7 +177,7 @@ async def analyze(
             await run_ctx.load_url(url, page_load_timeout)
             output = await run_ctx(query, output_schema, max_attempts)
             if not output:
-                logger.info("analysis", action="end", status="failed", message="No relevant request found")
+                logger.info("analysis", action="end", status="failed", reason="No relevant request found")
             else:
                 logger.info("analysis", action="end", status="success", relevant_api_call=output.request.url)
             return output
@@ -201,6 +202,7 @@ class _AnalyzerContext:
         self._llm_client = llm.LLMClient(
             provider="anthropic",
             model="claude-sonnet-4-20250514",
+            api_key=os.getenv("AYEJAX_ANTHROPIC_API_KEY"),
         )
 
         self._js_ctx = _JSContext(page)
