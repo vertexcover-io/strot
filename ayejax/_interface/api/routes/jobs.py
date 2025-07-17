@@ -65,13 +65,15 @@ JobStatus = Literal["pending", "ready", "failed"]
 class GetJobResponse(BaseModel):
     status: JobStatus
     job_id: UUID
+    created_at: datetime
+    completed_at: datetime | None
     url: str
     tag: TagLiteral
     message: str
     result: dict[str, Any] | None
 
 
-@router.post("/", response_model=CreateJobResponse)
+@router.post("/", response_model=CreateJobResponse, status_code=202)
 async def create_job(
     raw_request: Request,
     request: CreateJobRequest,
@@ -124,6 +126,8 @@ async def get_job(
     return GetJobResponse(
         status=job.status,
         job_id=job.id,
+        created_at=job.created_at,
+        completed_at=job.completed_at,
         url=job.url,
         tag=job.tag,
         message=job.message,
@@ -142,10 +146,7 @@ async def generate_job_report(
     job = result.scalar_one_or_none()
 
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status != "ready":
-        raise HTTPException(status_code=400, detail="Job is still pending")
+        return HTMLResponse(content=f"<h1>Job {job_id!s} not found</h1>", status_code=404)
 
     s3_client = boto3_session.client(
         "s3",
@@ -158,14 +159,14 @@ async def generate_job_report(
         s3_client.download_file(settings.AWS_S3_LOG_BUCKET, f"job-{job_id!s}.log", local_path)
         content = generate_report(Path(local_path).read_text())
     except botocore.exceptions.BotoCoreError as e:
-        raise HTTPException(status_code=500, detail=f"S3 download error: {e!s}") from e
+        return HTMLResponse(content=f"<h1>Log download error: {e!s}</h1>", status_code=500)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Report generation failed: {e!s}") from e
+        return HTMLResponse(content=f"<h1>Report generation failed: {e!s}</h1>", status_code=500)
     finally:
         with contextlib.suppress(OSError):
             os.remove(local_path)
 
-    return HTMLResponse(content=content)
+    return HTMLResponse(content=content, status_code=200)
 
 
 async def create_output(request: CreateJobRequest, output: AyejaxOutput, db: DBSessionDependency):
