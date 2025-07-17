@@ -34,7 +34,7 @@ Discover API endpoints with natural language
 ```
 
 ```bash
-export ANTHROPIC_API_KEY=<YOUR_API_KEY>
+export AYEJAX_ANTHROPIC_API_KEY=<YOUR_API_KEY>
 ayejax --url "https://global.solawave.co/products/red-light-therapy-eye-mask?variant=43898414170288"
 ayejax --url "https://www.getcleanpeople.com/product/fresh-clean-laundry-detergent/"
 ayejax --url "https://antica-barberia.us/products/silver-brushed-aluminum-shaving-lather-brush-with-pure-bleached-bristle"
@@ -58,20 +58,20 @@ Serve the API
 Set your Anthropic API key
 
 ```bash
-export ANTHROPIC_API_KEY=<YOUR_API_KEY>
+export AYEJAX_ANTHROPIC_API_KEY=<YOUR_API_KEY>
 ```
 
 Start postgres and minio services locally and serve the API
 
 ```bash
 docker-compose up -d
-AYEJAX_ENV=local AYEJAX_API_KEY=<YOUR_API_KEY> ANTHROPIC_API_KEY=<YOUR_API_KEY> uv run ayejax serve
+AYEJAX_ENV=local AYEJAX_API_KEY=<YOUR_API_KEY> AYEJAX_ANTHROPIC_API_KEY=<YOUR_API_KEY> uv run ayejax serve
 ```
 
 Or, Connect to a different postgres and s3-compatible storage services
 
 ```bash
-AYEJAX_ENV=prod AYEJAX_API_KEY=<YOUR_API_KEY> ANTHROPIC_API_KEY=<YOUR_API_KEY> AYEJAX_POSTGRES_USER=... AYEJAX_POSTGRES_PASSWORD=... AYEJAX_POSTGRES_DB=... AYEJAX_POSTGRES_HOST=... AYEJAX_POSTGRES_PORT=... AYEJAX_AWS_ACCESS_KEY_ID=... AYEJAX_AWS_SECRET_ACCESS_KEY=... AYEJAX_AWS_REGION=... AYEJAX_AWS_S3_LOG_BUCKET=... AYEJAX_AWS_S3_ENDPOINT_URL=... uv run ayejax serve
+AYEJAX_ENV=prod AYEJAX_API_KEY=<YOUR_API_KEY> AYEJAX_ANTHROPIC_API_KEY=<YOUR_API_KEY> AYEJAX_POSTGRES_USER=... AYEJAX_POSTGRES_PASSWORD=... AYEJAX_POSTGRES_DB=... AYEJAX_POSTGRES_HOST=... AYEJAX_POSTGRES_PORT=... AYEJAX_AWS_ACCESS_KEY_ID=... AYEJAX_AWS_SECRET_ACCESS_KEY=... AYEJAX_AWS_REGION=... AYEJAX_AWS_S3_LOG_BUCKET=... AYEJAX_AWS_S3_ENDPOINT_URL=... uv run ayejax serve
 ```
 
 ### Library
