@@ -14,9 +14,6 @@ COPY . .
 # Install dependencies using uv
 RUN uv sync
 
-# Apply migrations
-RUN uv run alembic upgrade head
-
 # Install chromium browser for playwright
 RUN uv run playwright install chromium --with-deps
 
