@@ -1,7 +1,6 @@
-from .pattern_builder import get_patterns
 from .strategy import StrategyInfo
 
-__all__ = ("StrategyInfo", "get_patterns")
+__all__ = ("StrategyInfo",)
 
 PAGE_KEY_CANDIDATES = {
     "page",
