@@ -129,11 +129,8 @@ class UnstructuredLoggingFormatter(logging.Formatter):
                 continue
             if k in ("func_name", "msg", "message", "timestamp"):
                 message_parts.append(v)
-            elif k in ("exception", "error"):
-                if isinstance(v, Exception):
-                    message_parts.append(f"{v.__class__.__name__}: {v!s}")
-                else:
-                    message_parts.append(v)
+            elif isinstance(v, Exception):
+                message_parts.append(f"{v.__class__.__name__}: {v!s}")
             elif isinstance(v, float):
                 message_parts.append(f"{k}={v:.2f}")
             else:

@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import io
 import os
@@ -5,7 +6,7 @@ import re
 from contextlib import asynccontextmanager, suppress
 from json import dumps as json_dumps
 from pathlib import Path
-from typing import Any, Literal, overload
+from typing import Any, Callable, Literal, cast, overload
 from urllib.parse import parse_qsl, urlparse
 
 from playwright.async_api import (
@@ -23,6 +24,7 @@ from ayejax.constants import (
     EXCLUDE_KEYWORDS,
     EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE,
     HEADERS_TO_IGNORE,
+    PAGINATION_KEYS_IDENTIFICATION_PROMPT_TEMPLATE,
 )
 from ayejax.helpers import draw_point_on_image, encode_image, keyword_match_ratio
 from ayejax.logging import LoggerType
@@ -30,6 +32,7 @@ from ayejax.tag import Tag, TagLiteral
 from ayejax.types import (
     AnalysisResult,
     Output,
+    PaginationKeys,
     Point,
     Request,
     Response,
@@ -67,9 +70,9 @@ async def analyze(
     tag: Tag,
     /,
     *,
+    max_steps: int = 30,
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
-    max_attempts: int = 30,
     page_load_timeout: float | None = None,
 ) -> Output | None:
     """
@@ -78,9 +81,9 @@ async def analyze(
     Args:
         url: The target web page URL to analyze.
         tag: The kind of information to look for (e.g. reviews).
+        max_steps: The maximum number of steps to perform before exiting.
         browser: The browser to use.
         logger: The logger to use.
-        max_attempts: The maximum number of attempts to perform before exiting.
         page_load_timeout: The timeout for waiting for the page to load.
 
     Returns:
@@ -94,9 +97,9 @@ async def analyze(
     tag: TagLiteral,
     /,
     *,
+    max_steps: int = 30,
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
-    max_attempts: int = 30,
     page_load_timeout: float | None = None,
 ) -> Output | None:
     """
@@ -105,9 +108,9 @@ async def analyze(
     Args:
         url: The target web page URL to analyze.
         tag: The kind of information to look for (e.g. reviews).
+        max_steps: The maximum number of steps to perform before exiting.
         browser: The browser to use.
         logger: The logger to use.
-        max_attempts: The maximum number of attempts to perform before exiting.
         page_load_timeout: The timeout for waiting for the page to load.
 
     Returns:
@@ -122,9 +125,9 @@ async def analyze(
     /,
     *,
     output_schema: type[BaseModel],
+    max_steps: int = 30,
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
-    max_attempts: int = 30,
     page_load_timeout: float | None = None,
 ) -> Output | None:
     """
@@ -134,9 +137,9 @@ async def analyze(
         url: The target web page URL to analyze.
         query: The query to use for analysis.
         output_schema: The output schema to extract data from the response.
+        max_steps: The maximum number of steps to perform before exiting.
         browser: The browser to use.
         logger: The logger to use.
-        max_attempts: The maximum number of attempts to perform before exiting.
         page_load_timeout: The timeout for waiting for the page to load.
 
     Returns:
@@ -149,9 +152,9 @@ async def analyze(
     query_or_tag: str | Tag | TagLiteral,
     /,
     *,
+    max_steps: int = 30,
     browser: Browser | Literal["headless", "headed"] = "headed",
     logger: LoggerType,
-    max_attempts: int = 30,
     page_load_timeout: float | None = None,
     **kwargs: Any,
 ) -> Output | None:
@@ -172,14 +175,23 @@ async def analyze(
         browser_ctx = await browser.new_context(bypass_csp=True)
         page = await browser_ctx.new_page()
         try:
-            logger.info("analysis", action="begin", url=url, query=query)
+            logger.info("analysis", action="begin", status="pending", url=url, query=query)
             run_ctx = _AnalyzerContext(page=page, logger=logger)
             await run_ctx.load_url(url, page_load_timeout)
-            output = await run_ctx(query, output_schema, max_attempts)
+            output = await run_ctx(query, output_schema, max_steps)
             if not output:
-                logger.info("analysis", action="end", status="failed", reason="No relevant request found")
+                logger.info(
+                    "analysis", action="end", status="failed", url=url, query=query, reason="No relevant request found"
+                )
             else:
-                logger.info("analysis", action="end", status="success", relevant_api_call=output.request.url)
+                logger.info(
+                    "analysis",
+                    action="end",
+                    status="success",
+                    url=url,
+                    query=query,
+                    relevant_api_call=output.request.url,
+                )
             return output
         finally:
             await browser_ctx.close()
@@ -247,172 +259,18 @@ class _AnalyzerContext:
                 )
             )
 
-    async def get_extraction_code_and_items_count(
-        self, output_schema: type[BaseModel], response_text: str
-    ) -> tuple[str | None, int | None]:
-        adapter = SchemaAdapter(
-            list[output_schema]
-        )  # Every schema will be treated as If we're extracting a list of items
-        formatted_output_schema = json_dumps(drop_titles(adapter.schema), indent=2)
-
-        for _ in range(3):
-            try:
-                self._logger.info(
-                    "code-generation",
-                    action="llm-completion",
-                    status="pending",
-                )
-                completion = await self._llm_client.get_completion(
-                    llm.LLMInput(
-                        prompt=EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE % (formatted_output_schema, response_text)
-                    )
-                )
-                self._logger.info(
-                    "code-generation",
-                    action="llm-completion",
-                    status="success",
-                    input_tokens=completion.input_tokens,
-                    output_tokens=completion.output_tokens,
-                )
-            except Exception as e:
-                self._logger.info(
-                    "code-generation",
-                    action="llm-completion",
-                    status="failed",
-                    exception=e,
-                )
-                continue
-
-            try:
-                # Pattern to match code fences with optional language specification
-                # Matches ```python, ```py, or just ``` followed by code and ending ```
-                pattern = r"```(?:python|py)?\s*\n(.*?)\n```"
-
-                matches = re.findall(pattern, completion.value, re.DOTALL)
-                if not matches:
-                    return None
-
-                code = matches[0].strip()
-                namespace = {}
-                exec(code, namespace)  # noqa: S102
-                items = adapter.validate_python(namespace["extract_data"](response_text))
-                self._logger.info("code-generation", action="validation", status="success")
-            except Exception as e:
-                self._logger.info("code-generation", action="validation", status="failed", exception=e)
-                continue
-            else:
-                return code, len(items)
-
-    async def determine_pagination_strategy(self, response: Response, query: str):  # noqa: C901
-        def get_key(candidates: set[str], entries: dict[str, Any]) -> str | None:
-            return next((k for k in candidates if k in entries), None)
-
-        def get_entries(request: Request) -> dict[str, Any]:
-            if request.method.lower() == "post" and isinstance(request.post_data, dict):
-                return request.post_data
-            return request.queries
-
-        async def build_strategy_info(entries: dict[str, Any]) -> pagination.StrategyInfo | None:
-            page_key = get_key(pagination.PAGE_KEY_CANDIDATES, entries)
-            offset_key = get_key(pagination.OFFSET_KEY_CANDIDATES, entries)
-            limit_key = get_key(pagination.LIMIT_KEY_CANDIDATES, entries)
-
-            if page_key and offset_key:
-                base_offset = int(entries[offset_key]) // int(entries[page_key])
-                self._logger.info(
-                    "determine-strategy",
-                    action="build-strategy-info",
-                    strategy="page-offset",
-                    page_key=page_key,
-                    offset_key=offset_key,
-                    base_offset=base_offset,
-                )
-                return pagination.strategy.PageOffsetInfo(
-                    page_key=page_key,
-                    offset_key=offset_key,
-                    base_offset=base_offset,
-                )
-            elif limit_key and offset_key:
-                self._logger.info(
-                    "determine-strategy",
-                    action="build-strategy-info",
-                    strategy="limit-offset",
-                    limit_key=limit_key,
-                    offset_key=offset_key,
-                )
-                return pagination.strategy.LimitOffsetInfo(
-                    limit_key=limit_key,
-                    offset_key=offset_key,
-                )
-            elif page_key:
-                self._logger.info(
-                    "determine-strategy",
-                    action="build-strategy-info",
-                    strategy="page-only",
-                    page_key=page_key,
-                )
-                return pagination.strategy.PageOnlyInfo(page_key=page_key)
-
-            self._captured_responses.clear()  # clear so it does not match previous responses
-            for attempt in range(getattr(self, "attempts_left", 20)):
-                try:
-                    self._logger.info("determine-strategy", action="run-step", step_count=attempt, status="pending")
-                    new_response = await self.run_step(query)
-                except Exception as e:
-                    self._logger.info(
-                        "determine-strategy", action="run-step", step_count=attempt, status="failed", exception=e
-                    )
-                    continue
-
-                if not new_response:
-                    continue
-
-                self._logger.info(
-                    "determine-strategy",
-                    action="run-step",
-                    step_count=attempt,
-                    status="success",
-                    method=new_response.request.method,
-                    url=new_response.request.url,
-                    queries=new_response.request.queries,
-                    data=new_response.request.post_data,
-                )
-                new_entries = get_entries(new_response.request)
-                cursor_key = get_key(pagination.NEXT_CURSOR_KEY_CANDIDATES, new_entries)
-                if cursor_key is None:  # The request doesn't have any pagination available
-                    return None
-
-                first_cursor = entries.get(cursor_key)
-                pagination_patterns = pagination.get_patterns(response.value, new_entries[cursor_key])
-                self._logger.info(
-                    "determine-strategy",
-                    action="build-strategy-info",
-                    strategy="next-cursor",
-                    cursor_key=cursor_key,
-                    first_cursor=first_cursor,
-                    pagination_patterns=len(pagination_patterns),
-                )
-                return pagination.strategy.NextCursorInfo(
-                    cursor_key=cursor_key,
-                    first_cursor=entries.get(cursor_key),
-                    patterns=pagination_patterns,
-                )
-
-            return None
-
-        return await build_strategy_info(get_entries(response.request))
-
-    async def run_step(self, query: str) -> Response | None:  # noqa: C901
-        screenshot = await self._page.screenshot(type="png")
-        prompt = ANALYSIS_PROMPT_TEMPLATE.format(
-            output_schema=drop_titles(AnalysisResult.model_json_schema()), query=query
-        )
-
+    async def request_llm_completion(
+        self,
+        event: str,
+        input: llm.LLMInput,
+        json: bool,
+        validator: Callable[[str], Any],
+    ) -> Any:
         try:
-            self._logger.info("run-step", action="llm-completion", status="pending", query=query)
-            completion = await self._llm_client.get_completion(llm.LLMInput(prompt=prompt, image=screenshot), json=True)
+            self._logger.info(event, action="llm-completion", status="pending")
+            completion = await self._llm_client.get_completion(input, json=json)
             self._logger.info(
-                "run-step",
+                event,
                 action="llm-completion",
                 status="success",
                 result=completion.value,
@@ -421,28 +279,154 @@ class _AnalyzerContext:
                 cost=completion.calculate_cost(3.0, 15.0),
             )
         except Exception as e:
-            self._logger.info("run-step", action="llm-completion", status="failed", exception=e)
+            self._logger.info(event, action="llm-completion", status="failed", reason=e)
+            raise
+
+        try:
+            return validator(completion.value)
+        except Exception as e:
+            self._logger.info(event, action="llm-completion:validation", status="failed", reason=e)
+            raise
+
+    async def get_extraction_code_and_items_count(
+        self, output_schema: type[BaseModel], response_text: str
+    ) -> tuple[str | None, int | None]:
+        # Every schema will be treated as If we're extracting a list of items
+        adapter = SchemaAdapter(list[output_schema])
+        llm_input = llm.LLMInput(
+            prompt=EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE
+            % (
+                json_dumps(drop_titles(adapter.schema), indent=2),
+                response_text,
+            )
+        )
+
+        def validate(value: str) -> tuple[str, int]:
+            # Pattern to match code fences with optional language specification
+            # Matches ```python, ```py, or just ``` followed by code and ending ```
+            pattern = r"```(?:python|py)?\s*\n(.*?)\n```"
+
+            matches = re.findall(pattern, value, re.DOTALL)
+            if not matches:
+                return None
+
+            code = matches[0].strip()
+            namespace = {}
+            exec(code, namespace)  # noqa: S102
+            items = adapter.validate_python(namespace["extract_data"](response_text))
+            return code, len(items)
+
+        for _ in range(3):
+            try:
+                return cast(
+                    tuple[str, int],
+                    await self.request_llm_completion(
+                        event="code-generation",
+                        input=llm_input,
+                        json=False,
+                        validator=validate,
+                    ),
+                )
+            except Exception:  # noqa: S112
+                continue
+        return None, None
+
+    async def detect_pagination_keys(self, parameters: dict[str, Any]) -> PaginationKeys:
+        llm_input = llm.LLMInput(
+            prompt=PAGINATION_KEYS_IDENTIFICATION_PROMPT_TEMPLATE.format(
+                parameters=json_dumps(parameters, indent=2),
+                output_schema=json_dumps(drop_titles(PaginationKeys.model_json_schema()), indent=2),
+            )
+        )
+
+        for _ in range(3):
+            try:
+                return cast(
+                    PaginationKeys,
+                    await self.request_llm_completion(
+                        event="detect-pagination",
+                        input=llm_input,
+                        json=True,
+                        validator=lambda x: PaginationKeys.model_validate_json(x),
+                    ),
+                )
+            except Exception:  # noqa: S112
+                continue
+        return PaginationKeys()
+
+    async def detect_pagination_strategy(  # noqa: C901
+        self, keys: PaginationKeys, parameters: dict[str, Any]
+    ) -> pagination.StrategyInfo | None:
+        if keys.page_number_key and keys.offset_key:
+            return pagination.strategy.PageOffsetInfo(
+                page_key=keys.page_number_key,
+                offset_key=keys.offset_key,
+                base_offset=int(parameters[keys.offset_key]) // int(parameters[keys.page_number_key]),
+            )
+        elif keys.limit_key and keys.offset_key:
+            return pagination.strategy.LimitOffsetInfo(
+                limit_key=keys.limit_key,
+                offset_key=keys.offset_key,
+            )
+        elif keys.page_number_key:
+            return pagination.strategy.PageInfo(page_key=keys.page_number_key)
+        elif cursor_key := keys.cursor_key:
+            cursor = parameters.get(cursor_key)
+            if isinstance(cursor, str):
+                for c_response in self._captured_responses:
+                    patterns = pagination.strategy.StringCursorInfo.generate_patterns(c_response.value, cursor)
+                    if patterns:
+                        return pagination.strategy.StringCursorInfo(
+                            cursor_key=cursor_key,
+                            start_cursor=None,
+                            patterns=patterns,
+                        )
+            elif isinstance(cursor, dict):
+                for c_response in self._captured_responses:
+                    pattern_map = pagination.strategy.DictCursorInfo.generate_pattern_map(c_response.value, cursor)
+                    if any(pattern_map.values()):
+                        return pagination.strategy.DictCursorInfo(
+                            cursor_key=cursor_key,
+                            start_cursor=None,
+                            pattern_map=pattern_map,
+                        )
+
+    async def run_step(self, query: str) -> Response | None:  # noqa: C901
+        screenshot = await self._page.screenshot(type="png")
+        prompt = ANALYSIS_PROMPT_TEMPLATE.format(
+            output_schema=json_dumps(drop_titles(AnalysisResult.model_json_schema()), indent=2), query=query
+        )
+
+        try:
+            result = cast(
+                AnalysisResult,
+                await self.request_llm_completion(
+                    event="run-step",
+                    input=llm.LLMInput(prompt=prompt, image=screenshot),
+                    json=True,
+                    validator=lambda x: AnalysisResult.model_validate_json(x),
+                ),
+            )
+        except Exception:
             return None
 
-        result = AnalysisResult.model_validate_json(completion.value)
         if sections := result.text_sections:
-            self._logger.info("run-step", step="text-processing", context=encode_image(screenshot))
+            response_to_return = None
             for response in self._captured_responses:
-                self._logger.info("run-step", action="matching", status="pending", url=response.request.url)
                 score = keyword_match_ratio(sections, response.value)
-                self._logger.info("run-step", action="matching", status="done", score=score)
-                if score < 0.4:
+                if score < 0.5:
                     continue
 
-                return response
+                response_to_return = response
+                break
 
-            self._logger.info("run-step", action="similar-content-skip", status="pending")
             if element := await self._js_ctx.get_last_similar_element(sections):
-                self._logger.info("run-step", action="similar-content-skip", status="success", target=element)
+                self._logger.info(
+                    "run-step", context=encode_image(screenshot), step="advance", action="scroll", target=element
+                )
                 await self._js_ctx.scroll_to_element(element)
-                return
 
-            self._logger.info("run-step", action="similar-content-skip", status="failed")
+            return response_to_return
 
         def get_context(point: Point) -> bytes:
             image = draw_point_on_image(screenshot, point)
@@ -450,49 +434,62 @@ class _AnalyzerContext:
             image.save(buffer, format="PNG")
             return encode_image(buffer.getvalue())
 
-        if result.close_overlay_popup_coords:
+        if point := result.close_overlay_popup_coords:
             self._logger.info(
-                "run-step", step="close-overlay-popup", context=get_context(result.close_overlay_popup_coords)
+                "run-step", context=get_context(point), step="close-overlay-popup", action="click", point=point
             )
-            if await self._js_ctx.click_at_point(result.close_overlay_popup_coords):
+            if await self._js_ctx.click_at_point(point):
                 return
 
-        if result.load_more_content_coords:
+        if point := result.load_more_content_coords:
             self._logger.info(
-                "run-step", step="load-more-content", context=get_context(result.load_more_content_coords)
+                "run-step", context=get_context(point), step="load-more-content", action="click", point=point
             )
-            if await self._js_ctx.click_at_point(result.load_more_content_coords):
+            if await self._js_ctx.click_at_point(point):
                 return
 
-        if result.skip_to_content_coords:
-            self._logger.info("run-step", step="skip-to-content", context=get_context(result.skip_to_content_coords))
-            if await self._js_ctx.click_at_point(result.skip_to_content_coords):
+        if point := result.skip_to_content_coords:
+            self._logger.info(
+                "run-step", context=get_context(point), step="skip-to-content", action="click", point=point
+            )
+            if await self._js_ctx.click_at_point(point):
                 return
 
-        self._logger.info("run-step", step="scroll-to-next-view", context=encode_image(screenshot))
+        self._logger.info(
+            "run-step", context=encode_image(screenshot), step="fallback", action="scroll", target="next-view"
+        )
         await self._js_ctx.scroll_to_next_view()
 
-    async def __call__(
+    async def __call__(  # noqa: C901
         self,
         query: str,
         output_schema: type[BaseModel],
-        max_attempts: int = 30,
+        max_steps: int = 30,
     ) -> Output | None:
-        for attempt in range(1, max_attempts + 1):
+        first_response = None
+        pagination_keys = PaginationKeys()
+        for step in range(1, max_steps + 1):
             try:
-                self._logger.info("analysis", action="run-step", step_count=attempt, status="pending")
+                self._logger.info("analysis", action="run-step", step_count=step, status="pending")
                 response = await self.run_step(query)
             except Exception as e:
-                self._logger.info("analysis", action="run-step", step_count=attempt, status="failed", exception=e)
+                self._logger.info("analysis", action="run-step", step_count=step, status="failed", reason=e)
                 response = None
 
             if not response:
+                self._logger.info(
+                    "analysis", action="run-step", step_count=step, status="failed", reason="No response on this step."
+                )
+                await asyncio.sleep(2.5)  # Wait before retrying for click/scroll event to take effect.
                 continue
+
+            if first_response is None:
+                first_response = response
 
             self._logger.info(
                 "analysis",
                 action="run-step",
-                step_count=attempt,
+                step_count=step,
                 status="success",
                 method=response.request.method,
                 url=response.request.url,
@@ -500,9 +497,55 @@ class _AnalyzerContext:
                 data=response.request.post_data,
             )
 
-            self.attempts_left = max_attempts - attempt
-            pagination_strategy = await self.determine_pagination_strategy(response, query)
+            request_parameters = response.request.parameters
+            if request_parameters and not pagination_keys.strategy_available():
+                self._logger.info(
+                    "analysis",
+                    action="detect-pagination",
+                    request_parameters=request_parameters,
+                    status="pending",
+                )
+                pagination_keys = await self.detect_pagination_keys(request_parameters)
+
+            pagination_strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
+            if pagination_strategy is None:
+                self._logger.info(
+                    "analysis",
+                    action="detect-pagination",
+                    request_parameters=request_parameters,
+                    status="failed",
+                    reason="No pagination keys detected. Trying again after collecting new responses.",
+                )
+                continue
+
+            if isinstance(
+                pagination_strategy, (pagination.strategy.StringCursorInfo, pagination.strategy.DictCursorInfo)
+            ):
+                pagination_strategy.start_cursor = first_response.request.parameters.get(pagination_strategy.cursor_key)
+                log_kwargs = {
+                    "cursor_key": pagination_strategy.cursor_key,
+                    "start_cursor": pagination_strategy.start_cursor,
+                }
+            else:
+                log_kwargs = pagination_strategy.model_dump()
+
+            self._logger.info(
+                "analysis",
+                action="detect-pagination",
+                request_parameters=request_parameters,
+                status="success",
+                strategy=pagination_strategy.name,
+                **log_kwargs,
+            )
+
+            self._logger.info("analysis", action="code-generation", status="pending")
             code, items_count = await self.get_extraction_code_and_items_count(output_schema, response.value)
+            if not code:
+                self._logger.info(
+                    "analysis", action="code-generation", status="failed", reason="LLM failed to generate code."
+                )
+            else:
+                self._logger.info("analysis", action="code-generation", status="success", code=code)
 
             # Filter out headers to ignore
             for key in list(response.request.headers):
