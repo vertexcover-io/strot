@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ayejax Analysis Report</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background: #fafbfc;
+        color: #1f2937;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        padding: 48px;
+        border-radius: 16px;
+        margin-bottom: 32px;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(79, 70, 229, 0.15);
+      }
+
+      .header h1 {
+        font-size: 3rem;
+        font-weight: 800;
+        margin-bottom: 12px;
+        letter-spacing: -0.02em;
+      }
+
+      .header p {
+        font-size: 1.2rem;
+        opacity: 0.9;
+        font-weight: 400;
+      }
+
+      .overview {
+        background: white;
+        padding: 32px;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e7eb;
+        margin-bottom: 32px;
+      }
+
+      .overview h2 {
+        font-size: 1.75rem;
+        margin-bottom: 24px;
+        color: #111827;
+        font-weight: 700;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+
+      .stat-card {
+        background: #f9fafb;
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        transition: all 0.2s ease;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-card h3 {
+        font-size: 0.875rem;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      .stat-card .value {
+        font-size: 2.25rem;
+        font-weight: 800;
+        color: #111827;
+      }
+
+      .target-info {
+        background: #f0f9ff;
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid #0ea5e9;
+      }
+
+      .target-info h3 {
+        color: #0c4a6e;
+        margin-bottom: 16px;
+        font-weight: 600;
+      }
+
+      .target-info .url {
+        word-break: break-all;
+        color: #0369a1;
+        font-weight: 500;
+        margin-bottom: 12px;
+        font-family: "JetBrains Mono", monospace;
+        background: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #bae6fd;
+      }
+
+      .target-info .query {
+        color: #0c4a6e;
+        font-style: italic;
+      }
+
+      .section {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e7eb;
+        margin-bottom: 32px;
+        overflow: hidden;
+      }
+
+      .section-header {
+        padding: 24px 32px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb;
+      }
+
+      .section-header h2 {
+        font-size: 1.75rem;
+        color: #111827;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .section-content {
+        padding: 32px;
+      }
+
+      .steps-container {
+        display: grid;
+        gap: 24px;
+      }
+
+      .step-card {
+        background: #fafbfc;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        transition: all 0.2s ease;
+      }
+
+      .step-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .step-header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .step-number {
+        background: #4f46e5;
+        color: white;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.1rem;
+      }
+
+      .step-number.success {
+        background: #10b981;
+      }
+
+      .step-number.failed {
+        background: #ef4444;
+      }
+
+      .step-number.pending {
+        background: #f59e0b;
+      }
+
+      .step-title {
+        flex: 1;
+      }
+
+      .step-title h3 {
+        font-size: 1.25rem;
+        color: #111827;
+        margin-bottom: 4px;
+        font-weight: 600;
+      }
+
+      .step-title p {
+        color: #6b7280;
+        font-size: 0.9rem;
+      }
+
+      .step-details {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 16px;
+        border: 1px solid #e5e7eb;
+      }
+
+      .step-details h4 {
+        color: #111827;
+        margin-bottom: 12px;
+        font-weight: 600;
+        font-size: 1rem;
+      }
+
+      .detail-item {
+        margin-bottom: 12px;
+        padding: 12px;
+        background: #f9fafb;
+        border-radius: 6px;
+        border: 1px solid #e5e7eb;
+      }
+
+      .screenshot {
+        margin: 16px 0;
+        text-align: center;
+      }
+
+      .screenshot img {
+        max-width: 500px;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+      }
+
+      .expandable {
+        cursor: pointer;
+        color: #4f46e5;
+        margin-top: 12px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        transition: color 0.2s ease;
+      }
+
+      .expandable:hover {
+        color: #4338ca;
+      }
+
+      .expandable::before {
+        content: "▼";
+        transition: transform 0.2s ease;
+        font-size: 0.8rem;
+      }
+
+      .expandable.collapsed::before {
+        transform: rotate(-90deg);
+      }
+
+      .collapsible {
+        max-height: 500px;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+      }
+
+      .collapsible.collapsed {
+        max-height: 0;
+      }
+
+      .json-code {
+        background: #1f2937;
+        color: #f3f4f6;
+        padding: 16px;
+        border-radius: 8px;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 0.875rem;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        border: 1px solid #374151;
+        max-height: 400px;
+        line-height: 1.5;
+      }
+
+      .status-badge {
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .status-badge.success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .status-badge.failed {
+        background: #fecaca;
+        color: #991b1b;
+      }
+
+      .status-badge.pending {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .code-display {
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 16px;
+        border-radius: 8px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.875rem;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        border: 1px solid #334155;
+        margin-top: 8px;
+        max-height: 500px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Ayejax Analysis Report</h1>
+        <p>Generated on {{ timestamp }}</p>
+      </div>
+
+      <div class="overview">
+        <h2>Analysis Overview</h2>
+        <div class="stats">
+          <div class="stat-card">
+            <h3>Analysis Steps</h3>
+            <div class="value">{{ analysis_steps | length }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Total Cost</h3>
+            <div class="value">{{ total_cost | format_cost }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Input Tokens</h3>
+            <div class="value">{{ "{:,}".format(total_input_tokens) }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Output Tokens</h3>
+            <div class="value">{{ "{:,}".format(total_output_tokens) }}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Result</h3>
+            <div class="value">
+              {{ "Success" if final_result else "Failed" }}
+            </div>
+          </div>
+          <div class="stat-card">
+            <h3>Duration</h3>
+            <div class="value">{{ analysis_duration }}</div>
+          </div>
+        </div>
+
+        <div class="target-info">
+          <h3>Target Information</h3>
+          <div class="url"><strong>URL:</strong> {{ url }}</div>
+          <div class="query"><strong>Query:</strong> {{ query }}</div>
+        </div>
+      </div>
+
+      {% if analysis_steps %}
+      <div class="section">
+        <div class="section-header">
+          <h2>🔍 Analysis Steps</h2>
+        </div>
+        <div class="section-content">
+          <div class="steps-container">
+            {% for step in analysis_steps %}
+            <div class="step-card">
+              <div class="step-header-content">
+                <div class="step-number {{ step.status }}">
+                  {{ step.step_count }}
+                </div>
+                <div class="step-title">
+                  <h3>Step {{ step.step_count }}: Page Analysis</h3>
+                  <p>
+                    {% if step.status == 'success' %} Found relevant API call:
+                    {{ step.method }} {{ step.url }} {% elif step.status ==
+                    'failed' %} {{ step.reason or "Failed to find relevant API
+                    call" }} {% else %} Analyzing page content to find relevant
+                    API calls {% endif %}
+                  </p>
+                </div>
+              </div>
+
+              {% if step.status == 'success' %}
+              <div class="step-details">
+                <h4>🎯 API Call Found</h4>
+                <div
+                  class="detail-item"
+                  style="background: #f0fff4; border: 1px solid #48bb78"
+                >
+                  <strong>Method:</strong> {{ step.method }}<br />
+                  <strong>URL:</strong>
+                  <span
+                    style="
+                      font-family: &quot;JetBrains Mono&quot;, monospace;
+                      background: #f7fafc;
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                    "
+                  >
+                    {{ step.url }} </span
+                  ><br />
+                  {% if step.queries %}
+                  <strong>Query Parameters:</strong>
+                  <div class="expandable collapsed">View Parameters</div>
+                  <div class="collapsible collapsed">
+                    <div class="json-code">
+                      {{ step.queries | tojson(indent=2) }}
+                    </div>
+                  </div>
+                  {% endif %} {% if step.data %}
+                  <strong>Request Data:</strong>
+                  <div class="expandable collapsed">View Data</div>
+                  <div class="collapsible collapsed">
+                    <div class="json-code">
+                      {{ step.data | tojson(indent=2) }}
+                    </div>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+              {% endif %} {% if step.sub_events %}
+              <div class="step-details">
+                <h4>🔄 Sub-actions Performed</h4>
+                {% for sub_event in step.sub_events %}
+                <div class="detail-item">
+                  <strong>Action:</strong>
+                  {% if sub_event.step == 'advance' %} Advance to next content
+                  section {% elif sub_event.step == 'close-overlay-popup' %}
+                  Close overlay popup {% elif sub_event.step ==
+                  'load-more-content' %} Load more content {% elif
+                  sub_event.step == 'skip-to-content' %} Skip to content {% elif
+                  sub_event.step == 'fallback' %} Fallback scroll {% else %} {{
+                  sub_event.step | title | replace('-', ' ') }} {% endif %} {%
+                  if sub_event.action and sub_event.action != 'scroll' %}({{
+                  sub_event.action }}){% endif %}
+                  <br />
+                  {% if sub_event.status %}
+                  <span class="status-badge {{ sub_event.status }}"
+                    >{{ sub_event.status }}</span
+                  >
+                  {% endif %} {% if sub_event.input_tokens or
+                  sub_event.output_tokens %}
+                  <br /><strong>Tokens:</strong> {{ sub_event.input_tokens +
+                  sub_event.output_tokens }} {% if sub_event.cost %}
+                  <br /><strong>Cost:</strong> {{ sub_event.cost | format_cost
+                  }} {% endif %} {% endif %} {% if sub_event.target %}
+                  <br /><strong>Target:</strong> {{ sub_event.target }} {% endif
+                  %} {% if sub_event.url %} <br /><strong>URL Match:</strong> {{
+                  sub_event.url }} {% endif %} {% if sub_event.context %}
+                  <div class="screenshot">
+                    <img
+                      src="data:image/png;base64,{{ sub_event.context }}"
+                      alt="Screenshot"
+                    />
+                  </div>
+                  {% endif %} {% if sub_event.reason %}
+                  <br /><strong>Reason:</strong> {{ sub_event.reason }} {% endif
+                  %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %} {% if pagination_detections %}
+      <div class="section">
+        <div class="section-header">
+          <h2>📄 Pagination Detection</h2>
+        </div>
+        <div class="section-content">
+          {% set successful_detections = pagination_detections |
+          selectattr('status', 'equalto', 'success') | list %} {% set
+          failed_detections = pagination_detections | selectattr('status',
+          'equalto', 'failed') | list %}
+
+          <!-- Summary Card -->
+          <div
+            class="step-card"
+            style="
+              background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+              border: 2px solid #cbd5e1;
+              margin-bottom: 24px;
+            "
+          >
+            <div class="step-header-content">
+              <div class="step-number" style="background: #64748b">📊</div>
+              <div class="step-title">
+                <h3>Detection Summary</h3>
+                <p>
+                  {{ pagination_detections | length }} detection attempt{{ 's'
+                  if pagination_detections | length != 1 else '' }}, {{
+                  successful_detections | length }} successful, {{
+                  failed_detections | length }} failed
+                </p>
+              </div>
+            </div>
+
+            {% if successful_detections %}
+            <div class="step-details">
+              <h4>✅ Final Strategy</h4>
+              {% set final_strategy = successful_detections[-1] %}
+              <div
+                class="detail-item"
+                style="background: #f0fff4; border: 1px solid #48bb78"
+              >
+                <strong>Type:</strong>
+                <span
+                  style="
+                    background: #dcfce7;
+                    color: #166534;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-weight: 600;
+                  "
+                >
+                  {{ final_strategy.strategy | title | replace('-', ' ') }} </span
+                ><br />
+                {% if final_strategy.page_number_key %}
+                <strong>Page Parameter:</strong>
+                <code>{{ final_strategy.page_number_key }}</code><br />
+                {% endif %} {% if final_strategy.offset_key %}
+                <strong>Offset Parameter:</strong>
+                <code>{{ final_strategy.offset_key }}</code><br />
+                {% endif %} {% if final_strategy.limit_key %}
+                <strong>Limit Parameter:</strong>
+                <code>{{ final_strategy.limit_key }}</code><br />
+                {% endif %} {% if final_strategy.cursor_key %}
+                <strong>Cursor Parameter:</strong>
+                <code>{{ final_strategy.cursor_key }}</code><br />
+                {% endif %} {% if final_strategy.base_offset %}
+                <strong>Base Offset:</strong> {{ final_strategy.base_offset
+                }}<br />
+                {% endif %} {% if final_strategy.start_cursor %}
+                <strong>Starting Cursor:</strong>
+                <code>{{ final_strategy.start_cursor }}</code><br />
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Individual Detection Attempts -->
+          {% for detection in pagination_detections %}
+          <div class="step-card">
+            <div class="step-header-content">
+              <div class="step-number {{ detection.status }}">
+                {{ loop.index }}
+              </div>
+              <div class="step-title">
+                <h3>Detection Attempt {{ loop.index }}</h3>
+                <p>
+                  {% if detection.status == 'success' %} ✅ Successfully
+                  identified {{ detection.strategy | title | replace('-', ' ')
+                  }} pagination pattern {% elif detection.status == 'failed' %}
+                  ❌ {{ detection.reason or "Failed to detect pagination
+                  strategy" }} {% else %} 🔍 Analyzing request parameters for
+                  pagination patterns {% endif %}
+                </p>
+              </div>
+            </div>
+
+            {% if detection.request_parameters %}
+            <div class="step-details">
+              <h4>📋 Request Parameters Analyzed</h4>
+              <div class="detail-item">
+                <strong>Parameter Count:</strong> {{
+                detection.request_parameters | length }}<br />
+                <strong>Keys:</strong> {{ detection.request_parameters.keys() |
+                list | join(', ') }}<br />
+                <div class="expandable collapsed">View Full Parameters</div>
+                <div class="collapsible collapsed">
+                  <div class="json-code">
+                    {{ detection.request_parameters | tojson(indent=2) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %} {% if detection.llm_calls %}
+            <div class="step-details">
+              <h4>🤖 LLM Analysis Details</h4>
+              {% for call in detection.llm_calls %}
+              <div class="detail-item">
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                  "
+                >
+                  <span class="status-badge {{ call.status }}"
+                    >{{ call.status }}</span
+                  >
+                  {% if call.status == 'success' %}
+                  <span style="color: #22543d; font-size: 0.9em"
+                    >✓ Analysis completed</span
+                  >
+                  {% elif call.status == 'failed' %}
+                  <span style="color: #742a2a; font-size: 0.9em"
+                    >✗ Analysis failed</span
+                  >
+                  {% endif %}
+                </div>
+
+                <!-- Performance Metrics -->
+                {% if call.input_tokens or call.output_tokens %}
+                <div
+                  style="
+                    background: #f8fafc;
+                    padding: 8px;
+                    border-radius: 4px;
+                    margin: 8px 0;
+                  "
+                >
+                  <strong>📊 Performance:</strong><br />
+                  <div
+                    style="
+                      display: grid;
+                      grid-template-columns: repeat(
+                        auto-fit,
+                        minmax(120px, 1fr)
+                      );
+                      gap: 8px;
+                      margin-top: 4px;
+                    "
+                  >
+                    <div>
+                      <strong>Input:</strong> {{
+                      "{:,}".format(call.input_tokens) }} tokens
+                    </div>
+                    <div>
+                      <strong>Output:</strong> {{
+                      "{:,}".format(call.output_tokens) }} tokens
+                    </div>
+                    <div>
+                      <strong>Total:</strong> {{ "{:,}".format(call.input_tokens
+                      + call.output_tokens) }} tokens
+                    </div>
+                    {% if call.cost %}
+                    <div>
+                      <strong>Cost:</strong> {{ call.cost | format_cost }}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endif %}
+
+                <!-- LLM Response -->
+                {% if call.result %}
+                <div class="expandable collapsed">🔍 View LLM Response</div>
+                <div class="collapsible collapsed">
+                  <div class="json-code">{{ call.result }}</div>
+                </div>
+                {% endif %} {% if call.reason %}
+                <div
+                  style="
+                    margin-top: 8px;
+                    padding: 8px;
+                    background: #fef2f2;
+                    border-left: 3px solid #ef4444;
+                    border-radius: 4px;
+                  "
+                >
+                  <strong>Error:</strong> {{ call.reason }}
+                </div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %} {% if detection.status == 'success' and
+            detection.strategy %}
+            <div class="step-details">
+              <h4>🎯 Detected Strategy Details</h4>
+              <div
+                class="detail-item"
+                style="background: #f0fff4; border: 1px solid #48bb78"
+              >
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 12px;
+                  "
+                >
+                  {% if detection.strategy %}
+                  <div>
+                    <strong>Strategy Type:</strong><br />
+                    <span
+                      style="
+                        background: #dcfce7;
+                        color: #166534;
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        font-weight: 600;
+                      "
+                    >
+                      {{ detection.strategy | title | replace('-', ' ') }}
+                    </span>
+                  </div>
+                  {% endif %} {% if detection.page_number_key %}
+                  <div>
+                    <strong>Page Key:</strong><br /><code
+                      >{{ detection.page_number_key }}</code
+                    >
+                  </div>
+                  {% endif %} {% if detection.offset_key %}
+                  <div>
+                    <strong>Offset Key:</strong><br /><code
+                      >{{ detection.offset_key }}</code
+                    >
+                  </div>
+                  {% endif %} {% if detection.limit_key %}
+                  <div>
+                    <strong>Limit Key:</strong><br /><code
+                      >{{ detection.limit_key }}</code
+                    >
+                  </div>
+                  {% endif %} {% if detection.cursor_key %}
+                  <div>
+                    <strong>Cursor Key:</strong><br /><code
+                      >{{ detection.cursor_key }}</code
+                    >
+                  </div>
+                  {% endif %} {% if detection.base_offset %}
+                  <div>
+                    <strong>Base Offset:</strong><br />{{ detection.base_offset
+                    }}
+                  </div>
+                  {% endif %} {% if detection.start_cursor %}
+                  <div>
+                    <strong>Start Cursor:</strong><br /><code
+                      >{{ detection.start_cursor }}</code
+                    >
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %} {% if code_generations %}
+      <div class="section">
+        <div class="section-header">
+          <h2>🔧 Code Generation</h2>
+        </div>
+        <div class="section-content">
+          {% set direct_code_gens = code_generations | selectattr('status',
+          'defined') | list %} {% set llm_code_gens = code_generations |
+          selectattr('llm_completion', 'defined') | list %} {% set
+          successful_generations = code_generations | selectattr('status',
+          'equalto', 'success') | list %} {% set validated_successes_count = 0
+          %} {% for gen in code_generations %} {% if gen.get('validation') and
+          gen.validation.get('status') == 'success' %} {% set
+          validated_successes_count = validated_successes_count + 1 %} {% endif
+          %} {% endfor %}
+
+          <!-- Summary Card -->
+          <div
+            class="step-card"
+            style="
+              background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+              border: 2px solid #cbd5e1;
+              margin-bottom: 24px;
+            "
+          >
+            <div class="step-header-content">
+              <div class="step-number" style="background: #64748b">⚙️</div>
+              <div class="step-title">
+                <h3>Generation Summary</h3>
+                <p>
+                  {{ code_generations | length }} generation attempt{{ 's' if
+                  code_generations | length != 1 else '' }}, {{
+                  (successful_generations | length) + validated_successes_count
+                  }} successful, {% set total_llm_attempts = llm_code_gens |
+                  length %} {% if total_llm_attempts > 0 %}{{ total_llm_attempts
+                  }} LLM attempt{{ 's' if total_llm_attempts != 1 else '' }}{%
+                  endif %}
+                </p>
+              </div>
+            </div>
+
+            {% if successful_generations or validated_successes_count > 0 %}
+            <div class="step-details">
+              <h4>✅ Final Generated Code</h4>
+              {% set final_code = None %} {% for gen in successful_generations
+              %} {% if gen.code and not final_code %} {% set final_code =
+              gen.code %} {% endif %} {% endfor %} {% for gen in
+              code_generations %} {% if gen.get('validation') and
+              gen.validation.get('status') == 'success' and
+              gen.get('llm_completion') and gen.llm_completion.get('result') and
+              not final_code %} {% set final_code = gen.llm_completion.result %}
+              {% endif %} {% endfor %} {% if final_code %}
+              <div
+                class="detail-item"
+                style="background: #f0fff4; border: 1px solid #48bb78"
+              >
+                <strong>Extraction Code:</strong>
+                <div class="expandable collapsed">View Final Code</div>
+                <div class="collapsible collapsed">
+                  <div class="code-display">{{ final_code }}</div>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Performance Summary -->
+            <div class="step-details">
+              <h4>📊 Generation Statistics</h4>
+              <div
+                style="
+                  display: grid;
+                  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                  gap: 12px;
+                "
+              >
+                <div class="detail-item">
+                  <strong>Total Attempts:</strong><br />{{ code_generations |
+                  length }}
+                </div>
+                <div class="detail-item">
+                  <strong>Success Rate:</strong><br />
+                  {% set total_success = (successful_generations | length) +
+                  validated_successes_count %} {% if code_generations | length >
+                  0 %} {{ "%.0f" | format((total_success / (code_generations |
+                  length)) * 100) }}% {% else %} 0% {% endif %}
+                </div>
+                {% if llm_code_gens %}
+                <div class="detail-item">
+                  <strong>LLM Cost:</strong><br />
+                  {% set total_llm_cost = 0 %} {% for gen in llm_code_gens %} {%
+                  if gen.llm_completion.cost %} {% set total_llm_cost =
+                  total_llm_cost + gen.llm_completion.cost %} {% endif %} {%
+                  endfor %} {{ total_llm_cost | format_cost }}
+                </div>
+                <div class="detail-item">
+                  <strong>Total Tokens:</strong><br />
+                  {% set total_tokens = 0 %} {% for gen in llm_code_gens %} {%
+                  set total_tokens = total_tokens +
+                  (gen.llm_completion.input_tokens or 0) +
+                  (gen.llm_completion.output_tokens or 0) %} {% endfor %} {{
+                  "{:,}".format(total_tokens) }}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Individual Generation Attempts -->
+          {% for code_gen in direct_code_gens %}
+          <div class="step-card">
+            <div class="step-header-content">
+              <div class="step-number {{ code_gen.status }}">
+                {{ loop.index }}
+              </div>
+              <div class="step-title">
+                <h3>Direct Code Generation</h3>
+                <p>
+                  {% if code_gen.status == 'success' %} ✅ Successfully
+                  generated extraction code from analysis result {% elif
+                  code_gen.status == 'failed' %} ❌ {{ code_gen.reason or
+                  "Failed to generate extraction code" }} {% else %} 🔍
+                  Generating Python code to extract data from API response {%
+                  endif %}
+                </p>
+              </div>
+            </div>
+
+            {% if code_gen.status == 'success' and code_gen.code %}
+            <div class="step-details">
+              <h4>✅ Generated Code</h4>
+              <div
+                class="detail-item"
+                style="background: #f0fff4; border: 1px solid #48bb78"
+              >
+                <strong>Extraction Code:</strong>
+                <div class="expandable collapsed">View Generated Code</div>
+                <div class="collapsible collapsed">
+                  <div class="code-display">{{ code_gen.code }}</div>
+                </div>
+              </div>
+            </div>
+            {% endif %} {% if code_gen.status == 'failed' and code_gen.reason %}
+            <div class="step-details">
+              <h4>❌ Generation Failed</h4>
+              <div
+                class="detail-item"
+                style="background: #fef2f2; border: 1px solid #fecaca"
+              >
+                <strong>Reason:</strong> {{ code_gen.reason }}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %} {% for code_gen in llm_code_gens %}
+          <div class="step-card">
+            <div class="step-header-content">
+              <div
+                class="step-number {% if code_gen.validation and code_gen.validation.status == 'success' %}success{% elif code_gen.validation and code_gen.validation.status == 'failed' %}failed{% else %}{{ code_gen.llm_completion.status }}{% endif %}"
+              >
+                {{ (direct_code_gens | length) + loop.index }}
+              </div>
+              <div class="step-title">
+                <h3>LLM Generation Attempt {{ code_gen.attempt_number }}</h3>
+                <p>
+                  {% if code_gen.validation and code_gen.validation.status ==
+                  'success' %} ✅ Code generation and validation successful {%
+                  elif code_gen.validation and code_gen.validation.status ==
+                  'failed' %} ❌ Code generation failed validation {% elif
+                  code_gen.llm_completion.status == 'success' %} ⏳ Code
+                  generated, awaiting validation {% elif
+                  code_gen.llm_completion.status == 'failed' %} ❌ LLM failed to
+                  generate code {% else %} 🔍 Creating Python code to extract
+                  structured data from API response {% endif %}
+                </p>
+              </div>
+            </div>
+
+            {% if code_gen.llm_completion %}
+            <div class="step-details">
+              <h4>🤖 LLM Code Generation</h4>
+              <div class="detail-item">
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                  "
+                >
+                  <span
+                    class="status-badge {{ code_gen.llm_completion.status }}"
+                    >{{ code_gen.llm_completion.status }}</span
+                  >
+                  {% if code_gen.llm_completion.status == 'success' %}
+                  <span style="color: #22543d; font-size: 0.9em"
+                    >✓ Code generated successfully</span
+                  >
+                  {% elif code_gen.llm_completion.status == 'failed' %}
+                  <span style="color: #742a2a; font-size: 0.9em"
+                    >✗ Generation failed</span
+                  >
+                  {% endif %}
+                </div>
+
+                <!-- Performance Metrics -->
+                {% if code_gen.llm_completion.input_tokens or
+                code_gen.llm_completion.output_tokens %}
+                <div
+                  style="
+                    background: #f8fafc;
+                    padding: 8px;
+                    border-radius: 4px;
+                    margin: 8px 0;
+                  "
+                >
+                  <strong>📊 Performance:</strong><br />
+                  <div
+                    style="
+                      display: grid;
+                      grid-template-columns: repeat(
+                        auto-fit,
+                        minmax(120px, 1fr)
+                      );
+                      gap: 8px;
+                      margin-top: 4px;
+                    "
+                  >
+                    <div>
+                      <strong>Input:</strong> {{
+                      "{:,}".format(code_gen.llm_completion.input_tokens) }}
+                      tokens
+                    </div>
+                    <div>
+                      <strong>Output:</strong> {{
+                      "{:,}".format(code_gen.llm_completion.output_tokens) }}
+                      tokens
+                    </div>
+                    <div>
+                      <strong>Total:</strong> {{
+                      "{:,}".format(code_gen.llm_completion.input_tokens +
+                      code_gen.llm_completion.output_tokens) }} tokens
+                    </div>
+                    {% if code_gen.llm_completion.cost %}
+                    <div>
+                      <strong>Cost:</strong> {{ code_gen.llm_completion.cost |
+                      format_cost }}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endif %} {% if code_gen.llm_completion.reason %}
+                <div
+                  style="
+                    margin-top: 8px;
+                    padding: 8px;
+                    background: #fef2f2;
+                    border-left: 3px solid #ef4444;
+                    border-radius: 4px;
+                  "
+                >
+                  <strong>Error:</strong> {{ code_gen.llm_completion.reason }}
+                </div>
+                {% endif %}
+
+                <!-- Generated Code -->
+                {% if code_gen.llm_completion.result %}
+                <div class="expandable collapsed">🔍 View LLM Response</div>
+                <div class="collapsible collapsed">
+                  <div class="code-display">
+                    {{ code_gen.llm_completion.result }}
+                  </div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %} {% if code_gen.validation %}
+            <div class="step-details">
+              <h4>✓ Code Validation</h4>
+              <div
+                class="detail-item {% if code_gen.validation.status == 'success' %}style='background: #f0fff4; border: 1px solid #48bb78;'{% elif code_gen.validation.status == 'failed' %}style='background: #fef2f2; border: 1px solid #fecaca;'{% endif %}"
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                  "
+                >
+                  <span class="status-badge {{ code_gen.validation.status }}"
+                    >{{ code_gen.validation.status }}</span
+                  >
+                  {% if code_gen.validation.status == 'success' %}
+                  <span style="color: #22543d; font-size: 0.9em"
+                    >✓ Code executed successfully and extracted data</span
+                  >
+                  {% elif code_gen.validation.status == 'failed' %}
+                  <span style="color: #742a2a; font-size: 0.9em"
+                    >✗ Code validation failed</span
+                  >
+                  {% endif %}
+                </div>
+                {% if code_gen.validation.reason %}
+                <div
+                  style="
+                    margin-top: 8px;
+                    padding: 8px;
+                    background: #fef2f2;
+                    border-left: 3px solid #ef4444;
+                    border-radius: 4px;
+                  "
+                >
+                  <strong>Validation Error:</strong> {{
+                  code_gen.validation.reason }}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Final Results -->
+      <div class="section">
+        <div class="section-header">
+          <h2>🎯 Analysis Results</h2>
+        </div>
+        <div class="section-content">
+          <!-- Success/Failure Status -->
+          <div
+            class="step-card"
+            style="{% if final_result %}background: linear-gradient(135deg, #f0fff4 0%, #e6fffa 100%); border: 2px solid #48bb78;{% else %}background: linear-gradient(135deg, #fef2f2 0%, #fef5e7 100%); border: 2px solid #f56565;{% endif %}"
+          >
+            <div class="step-header-content">
+              {% if final_result %}
+              <div class="step-number success" style="font-size: 1.5rem">
+                ✅
+              </div>
+              <div class="step-title">
+                <h3 style="color: #22543d">Analysis Successful</h3>
+                <p style="color: #2f855a">
+                  Successfully identified the target API endpoint and generated
+                  extraction code.
+                </p>
+              </div>
+              {% else %}
+              <div class="step-number failed" style="font-size: 1.5rem">❌</div>
+              <div class="step-title">
+                <h3 style="color: #742a2a">Analysis Failed</h3>
+                <p style="color: #c53030">
+                  Unable to find a relevant API endpoint for the specified
+                  query.
+                </p>
+              </div>
+              {% endif %}
+            </div>
+
+            {% if final_result %}
+            <div class="step-details">
+              <h4>🔗 Discovered API Endpoint</h4>
+              <div
+                class="detail-item"
+                style="background: white; border: 1px solid #68d391"
+              >
+                <strong>URL:</strong>
+                <div
+                  style="
+                    font-family: &quot;JetBrains Mono&quot;, monospace;
+                    background: #f7fafc;
+                    padding: 10px;
+                    border-radius: 4px;
+                    border: 1px solid #e2e8f0;
+                    margin-top: 8px;
+                    word-break: break-all;
+                  "
+                >
+                  {{ final_result.api_url }}
+                </div>
+              </div>
+            </div>
+            {% endif %} {% if final_pagination_strategy %}
+            <div class="step-details">
+              <h4>📄 Pagination Strategy</h4>
+              <div
+                class="detail-item"
+                style="background: white; border: 1px solid #68d391"
+              >
+                <strong>Strategy:</strong> {{ final_pagination_strategy.strategy
+                | title | replace('-', ' ') }}<br />
+                {% if final_pagination_strategy.page_number_key %}
+                <strong>Page Key:</strong> {{
+                final_pagination_strategy.page_number_key }}<br />
+                {% endif %} {% if final_pagination_strategy.offset_key %}
+                <strong>Offset Key:</strong> {{
+                final_pagination_strategy.offset_key }}<br />
+                {% endif %} {% if final_pagination_strategy.limit_key %}
+                <strong>Limit Key:</strong> {{
+                final_pagination_strategy.limit_key }}<br />
+                {% endif %} {% if final_pagination_strategy.cursor_key %}
+                <strong>Cursor Key:</strong> {{
+                final_pagination_strategy.cursor_key }}<br />
+                {% endif %} {% if final_pagination_strategy.base_offset %}
+                <strong>Base Offset:</strong> {{
+                final_pagination_strategy.base_offset }}<br />
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+
+            <div class="step-details">
+              <h4>📊 Performance Summary</h4>
+              <div
+                style="
+                  display: grid;
+                  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                  gap: 16px;
+                "
+              >
+                <div class="detail-item">
+                  <strong>Steps:</strong> {{ analysis_steps | length }}<br />
+                  <strong>Duration:</strong> {{ analysis_duration }}<br />
+                  <strong>Status:</strong>
+                  {% if analysis_steps | length <= 5 %}
+                  <span style="color: #22543d">Efficient</span>
+                  {% elif analysis_steps | length <= 10 %}
+                  <span style="color: #2b6cb0">Good</span>
+                  {% else %}
+                  <span style="color: #d69e2e">Average</span>
+                  {% endif %}
+                </div>
+                <div class="detail-item">
+                  <strong>Cost:</strong> {{ total_cost | format_cost }}<br />
+                  <strong>Input Tokens:</strong> {{
+                  "{:,}".format(total_input_tokens) }}<br />
+                  <strong>Output Tokens:</strong> {{
+                  "{:,}".format(total_output_tokens) }}
+                </div>
+                <div class="detail-item">
+                  <strong>Code Generation:</strong>
+                  {% if code_generation_success %}
+                  <span style="color: #22543d">Success</span>
+                  {% else %}
+                  <span style="color: #742a2a">Failed</span>
+                  {% endif %}<br />
+                  <strong>Pagination:</strong>
+                  {% if final_pagination_strategy %}
+                  <span style="color: #22543d">Detected</span>
+                  {% else %}
+                  <span style="color: #d69e2e">Not Found</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Initialize expandable sections
+        const expandables = document.querySelectorAll(".expandable");
+        expandables.forEach((expandable) => {
+          expandable.addEventListener("click", function () {
+            this.classList.toggle("collapsed");
+            const content = this.nextElementSibling;
+            if (content && content.classList.contains("collapsible")) {
+              content.classList.toggle("collapsed");
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

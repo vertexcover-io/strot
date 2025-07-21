@@ -36,40 +36,39 @@ ACTIONS TO CHOOSE FROM (ORDERED BY PRIORITY):
    → Set "skip_to_content_coords" to the element coordinates
    → Leave other fields null
 
-RESPONSE FORMAT:
+OUTPUT_SCHEMA:
 {output_schema}
 
 USER REQUIREMENT:
 {query}
 """
 
-ANALYSIS_PROMPT_TEMPLATE_WITH_SECTION_NAVIGATION = """\
-Your task is to precisely extract keywords from the provided screenshot of a webpage that are directly relevant to the user's data scraping requirement. These keywords should represent the actual data being scraped and must exactly match those visible in the screenshot.
+PAGINATION_KEYS_IDENTIFICATION_PROMPT_TEMPLATE = """
+You are an expert at identifying pagination parameter keys in API requests. Given the following request parameters, identify which TOP-LEVEL keys are used for pagination.
 
-Strictly adhere to the following instructions:
-- Inspect the screenshot for keywords that are directly relevant to the user's data scraping requirement below.
-- Only extract keywords that represent the actual data content the user wants to scrape (e.g., product names, prices, descriptions, etc.).
-- Ignore generic website elements like navigation, headers, footers, or unrelated content.
-- If an overlay popup is visible in the screenshot, identify the "close" or "allow" clickable element's coordinates and assign them to "popup_element_point". If no overlay popup is present, set this to null.
-- If and only if no suitable data-relevant keywords are found:
-  - set "keywords" to an empty list.
-  - Look for user requirement relevant navigation elements in the following priority order:
-    1. **Pagination controls**: Page numbers (1, 2, 3...), "Next" button, ">" arrow, "More" button, or pagination dots
-    2. **Section navigation**: Element that lead to sections likely containing the required keywords
-    3. **Content expansion**: "Show more", "Load more", "Expand", or accordion/dropdown toggles
-  - Select the MOST RELEVANT navigation element that would likely lead to finding the required keywords
-  - Assign the coordinates of this element to "navigation_element_point"
-  - If no relevant navigation element is found, set this to null
+REQUEST PARAMETERS:
+{parameters}
 
-Provide your response in JSON matching this schema:
+PAGINATION KEY CANDIDATES FOR REFERENCE:
+- Page keys: 'page', 'page_no', 'page_number', 'page_index', 'data_page'
+- Limit keys: 'limit', 'take', 'page_size', 'per_page'
+- Offset keys: 'offset'
+- Cursor keys: 'cursor', 'page_after', 'next_cursor', 'after'
 
-{
-  "keywords": ["<keyword1>", "<keyword2>", ...],
-  "popup_element_point": {"x": <x>, "y": <y>} or null,
-  "navigation_element_point": {"x": <x>, "y": <y>} or null
-}
+IMPORTANT: Only look at TOP-LEVEL keys in the request parameters. Do not look inside nested objects or arrays.
 
-User Requirement: %s"""
+RULES:
+1. Only examine keys at the root level of the request parameters
+2. A key is a pagination key if its entire value (whether simple or complex) is used for pagination
+3. For cursor keys, the entire value of the key (even if it's an object) serves as the cursor
+4. For limit/offset/page keys, look for numeric values that control pagination
+5. Set a key to null if it is not found
+
+OUTPUT_SCHEMA:
+{output_schema}
+
+Return only the top-level key names that are used for pagination purposes.
+"""
 
 EXTRACTION_CODE_GENERATION_PROMPT_TEMPLATE = """\
 Your task is to generate robust Python code that extracts and transforms data from an API response into the specified schema format.
