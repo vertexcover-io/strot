@@ -1,11 +1,8 @@
-"""
-Job routes for creating new API patterns
-"""
-
 import contextlib
 import os
 import tempfile
 from datetime import datetime, timezone
+from json import dumps as json_dumps
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
@@ -235,64 +232,20 @@ async def process_job_request(job_id: UUID, request: CreateJobRequest, browser: 
                 await db.commit()
 
 
-def prepare_pagination_states(
-    pagination_strategy: PageInfo | PageOffsetInfo | LimitOffsetInfo,
-    limit: int,
-    offset: int,
-    initial_page_size: int,
-) -> list[dict[str, str]]:
-    """Prepare the API requests needed to fulfill limit/offset requirements."""
-    requests = []
-
-    if isinstance(pagination_strategy, LimitOffsetInfo):
-        # For limit/offset, we need to determine how many API calls to make
-        # based on the API's original limit (initial_page_size)
-        api_limit = initial_page_size
-        current_offset = offset
-        remaining_items = limit
-
-        while remaining_items > 0:
-            # Calculate how many items to request from this API call
-            items_to_request = min(remaining_items, api_limit)
-
-            requests.append({
-                pagination_strategy.limit_key: str(items_to_request),
-                pagination_strategy.offset_key: str(current_offset),
-            })
-
-            current_offset += items_to_request
-            remaining_items -= items_to_request
-
-    elif isinstance(pagination_strategy, PageInfo):
-        # Calculate which pages we need to fetch
-        start_page = (offset // initial_page_size) + 1
-        end_item = offset + limit
-        end_page = ((end_item - 1) // initial_page_size) + 1
-
-        for page in range(start_page, end_page + 1):
-            requests.append({pagination_strategy.page_key: str(page)})
-
-    elif isinstance(pagination_strategy, PageOffsetInfo):
-        # Calculate which pages we need to fetch
-        start_page = (offset // initial_page_size) + 1
-        end_item = offset + limit
-        end_page = ((end_item - 1) // initial_page_size) + 1
-
-        for page in range(start_page, end_page + 1):
-            requests.append({
-                pagination_strategy.page_key: str(page),
-                pagination_strategy.offset_key: str(pagination_strategy.base_offset * page),
-            })
-
-    return requests
-
-
 async def make_request(output: AyejaxOutput, pagination_state: dict[str, str]) -> str:
-    """Execute a single API request with the given parameters."""
+    """Execute a single API request with the given pagination state."""
     if output.request.method.lower() == "post" and isinstance(output.request.post_data, dict):
-        output.request.post_data.update(pagination_state)
+        for key, value in pagination_state.items():
+            if value is None:
+                output.request.post_data.pop(key, None)
+            else:
+                output.request.post_data[key] = value
     else:
-        output.request.queries.update(pagination_state)
+        for key, value in pagination_state.items():
+            if value is None:
+                output.request.queries.pop(key, None)
+            else:
+                output.request.queries[key] = value
 
     async with httpx.AsyncClient(timeout=settings.EXTERNAL_API_REQUEST_TIMEOUT) as client:
         response = await client.request(
@@ -306,7 +259,136 @@ async def make_request(output: AyejaxOutput, pagination_state: dict[str, str]) -
         return response.text
 
 
-async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[str, str]:  # noqa: C901
+async def generate_data(output: AyejaxOutput, limit: int, offset: int):  # noqa: C901
+    namespace = {}
+    if output.schema_extractor_code:
+        exec(output.schema_extractor_code, namespace)  # noqa: S102
+
+    last_response = None
+
+    def extract_data(response_text: str) -> list:
+        nonlocal last_response
+        if last_response == response_text:
+            return []
+
+        last_response = response_text
+        if "extract_data" in namespace:
+            return namespace["extract_data"](response_text)
+        return [response_text]
+
+    pagination_strategy = output.pagination_strategy
+    initial_page_size = output.items_count_on_first_extraction
+    global_position = 0
+    remaining_items = limit
+
+    def _slice(data: list) -> list:
+        if not data:
+            return []
+
+        nonlocal global_position
+        nonlocal remaining_items
+
+        chunk_start = max(0, offset - global_position)
+        chunk_end = min(len(data), chunk_start + remaining_items)
+
+        if chunk_start < len(data):
+            slice_data = data[chunk_start:chunk_end]
+            if slice_data:
+                remaining_items -= len(slice_data)
+                global_position += len(data)
+                return slice_data
+
+        return []
+
+    if isinstance(pagination_strategy, LimitOffsetInfo):
+        # For limit/offset, we need to determine how many API calls to make
+        # based on the API's original limit (initial_page_size)
+        api_limit = initial_page_size
+        current_offset = offset
+
+        while remaining_items > 0:
+            items_to_request = min(remaining_items, api_limit)
+
+            data = extract_data(
+                await make_request(
+                    output,
+                    {
+                        pagination_strategy.limit_key: str(items_to_request),
+                        pagination_strategy.offset_key: str(current_offset),
+                    },
+                )
+            )
+
+            if slice_data := _slice(data):
+                yield slice_data
+            else:
+                break
+
+            current_offset += items_to_request
+
+    elif isinstance(pagination_strategy, PageInfo):
+        start_page = (offset // initial_page_size) + 1
+        end_item = offset + limit
+        end_page = ((end_item - 1) // initial_page_size) + 1
+
+        global_position = (start_page - 1) * initial_page_size  # Items before start_page
+
+        for page in range(start_page, end_page + 1):
+            data = extract_data(await make_request(output, {pagination_strategy.page_key: str(page)}))
+
+            if slice_data := _slice(data):
+                yield slice_data
+                if remaining_items <= 0:
+                    break
+            else:
+                break
+
+    elif isinstance(pagination_strategy, PageOffsetInfo):
+        start_page = (offset // initial_page_size) + 1
+        end_item = offset + limit
+        end_page = ((end_item - 1) // initial_page_size) + 1
+
+        global_position = (start_page - 1) * initial_page_size
+
+        for page in range(start_page, end_page + 1):
+            data = extract_data(
+                await make_request(
+                    output,
+                    {
+                        pagination_strategy.page_key: str(page),
+                        pagination_strategy.offset_key: str(pagination_strategy.base_offset * page),
+                    },
+                )
+            )
+
+            if slice_data := _slice(data):
+                yield slice_data
+                if remaining_items <= 0:
+                    break
+            else:
+                break
+
+    elif isinstance(pagination_strategy, (StringCursorInfo, DictCursorInfo)):
+        last_cursor = None
+        current_response = await make_request(output, {pagination_strategy.cursor_key: None})
+        repr_fn = lambda x: json_dumps(x) if isinstance(pagination_strategy, DictCursorInfo) else x
+        while remaining_items > 0:
+            data = extract_data(current_response)
+            if slice_data := _slice(data):
+                yield slice_data
+            else:
+                break
+
+            next_cursor = pagination_strategy.extract_cursor(current_response)
+            if next_cursor is None or next_cursor == last_cursor:
+                break
+            last_cursor = next_cursor
+            current_response = await make_request(output, {pagination_strategy.cursor_key: repr_fn(next_cursor)})
+    else:
+        yield _slice(extract_data(await make_request(output, {})))
+
+
+async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[str, str]:
     async with sessionmanager.session() as db:
         result = await db.execute(select(Output).where(Output.id == output_id))
         output_record = result.scalar_one_or_none()
@@ -315,81 +397,17 @@ async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[
             raise Exception(f"Output {output_id!s} not found")
 
         output = AyejaxOutput.model_validate(output_record.value)
-
-        strategy = output.pagination_strategy
         try:
-            if not strategy or isinstance(strategy, (StringCursorInfo, DictCursorInfo)):
-                # If pagination strategy is not available or is cursor-based, just return the first call
-                pagination_requests = [{}]
-            else:
-                # Calculate all the requests we need to make
-                pagination_requests = prepare_pagination_states(
-                    strategy, limit, offset, output.items_count_on_first_extraction
-                )
-
             data_list = []
-            successful_pagination_requests = []
-            last_response = None
-
-            # Execute all requests
-            for pagination_state in pagination_requests:
-                response_text = await make_request(output, pagination_state)
-
-                # Check for duplicate responses (pagination end)
-                if last_response is not None and last_response == response_text:
-                    break
-
-                successful_pagination_requests.append(pagination_state)
-                last_response = response_text
-
-                # Extract data if schema extractor is available
-                if output.schema_extractor_code:
-                    namespace = {}
-                    exec(output.schema_extractor_code, namespace)  # noqa: S102
-                    if data := namespace["extract_data"](response_text):
-                        data_list.extend(data)
-                    else:
-                        break
-                else:
-                    # If no schema extractor, return raw response
-                    data_list.append(response_text)
-
-            # Apply final slicing for exact limit/offset
-            if output.schema_extractor_code:
-                # If we fetched multiple pages, we need to calculate the correct slice
-                if len(successful_pagination_requests) > 1:
-                    # Calculate the global start index within our fetched results
-                    global_start = 0
-                    for i, pagination_state in enumerate(successful_pagination_requests):
-                        if isinstance(strategy, (PageInfo, PageOffsetInfo)):
-                            page_num = int(pagination_state[strategy.page_key])
-                            if page_num == ((offset // output.items_count_on_first_extraction) + 1):
-                                global_start = i * output.items_count_on_first_extraction
-                                break
-                        elif isinstance(strategy, LimitOffsetInfo):
-                            request_offset = int(pagination_state[strategy.offset_key])
-                            if request_offset <= offset:
-                                global_start = sum(
-                                    int(req[strategy.limit_key]) for req in successful_pagination_requests[:i]
-                                )
-
-                    start_idx = global_start + (offset % output.items_count_on_first_extraction)
-                else:
-                    # For structured data, we need to slice based on the original offset within our fetched data
-                    start_idx = offset % output.items_count_on_first_extraction if offset else 0
-
-                data_list = data_list[start_idx : start_idx + limit]
+            async for data in generate_data(output, limit, offset):
+                data_list.extend(data)
 
             output_record.usage_count += 1
             output_record.last_used_at = datetime.now(timezone.utc)
             await db.commit()
             await db.refresh(output_record)
 
-            result = {output_record.tag: data_list}
-            if strategy and isinstance(strategy, (StringCursorInfo, DictCursorInfo)):
-                result["error"] = (
-                    "Limit/offset pagination not supported for cursor-based pagination. Returning data from first page."
-                )
+            result = {output_record.tag: data_list, "count": len(data_list)}
         except Exception as e:
             return {"error": f"Pagination processing failed: {e}"}
 

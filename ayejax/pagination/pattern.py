@@ -31,17 +31,9 @@ class Pattern(BaseModel):
         after = input[pos + len(output) :]
 
         # Generate patterns of different delimiter lengths
-        for delim_len in range(1, min(21, len(before) + 1, len(after) + 1)):
+        for delim_len in range(min(20, len(before), len(after)), 0, -1):
             if len(before) >= delim_len and len(after) >= delim_len:
                 pattern = Pattern(before=before[-delim_len:], after=after[:delim_len])
                 patterns.append(pattern)
 
-        # Score patterns by testing them against the original input/output
-        pattern_scores = []
-        for pattern in patterns:
-            score = 1.0 if pattern.test(input) == output else 0.0
-            pattern_scores.append((pattern, score))
-
-        # Sort by score (highest first) and return patterns
-        pattern_scores.sort(key=lambda x: x[1], reverse=True)
-        return [pattern for pattern, _ in pattern_scores]
+        return patterns

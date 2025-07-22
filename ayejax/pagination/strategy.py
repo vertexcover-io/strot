@@ -34,7 +34,7 @@ class LimitOffsetInfo(BaseModel):
 
 class StringCursorInfo(BaseModel):
     cursor_key: str
-    start_cursor: str | None
+    default_cursor: str
     patterns: list[Pattern]
 
     @property
@@ -54,28 +54,33 @@ class StringCursorInfo(BaseModel):
 
 class DictCursorInfo(BaseModel):
     cursor_key: str
-    start_cursor: dict[str, Any] | None
-    pattern_map: dict[str, list[Pattern]]
+    default_cursor: dict[str, Any]
+    patterns_map: dict[str, list[Pattern]]
 
     @property
     def name(self) -> str:
         return "cursor-based"
 
     @classmethod
-    def generate_pattern_map(cls, response_text: str, cursor: dict[str, Any]) -> dict[str, list[Pattern]]:
-        pattern_map: dict[str, list[Pattern]] = {}
+    def generate_patterns_map(cls, response_text: str, cursor: dict[str, Any]) -> dict[str, list[Pattern]]:
+        patterns_map: dict[str, list[Pattern]] = {}
         for key, value in cursor.items():
-            pattern_map[key] = Pattern.generate_list(response_text, str(value))
-        return pattern_map
+            patterns_map[key] = Pattern.generate_list(response_text, str(value))
+        return patterns_map
 
     def extract_cursor(self, response_text: str) -> dict[str, Any] | None:
         cursor = {}
-        for key, patterns in self.pattern_map.items():
+        for key, patterns in self.patterns_map.items():
+            if not patterns:
+                cursor[key] = self.default_cursor[key]
+                continue
             for pattern in patterns:
                 if output := pattern.test(response_text):
                     cursor[key] = output
                     break
-        return cursor or None
+            else:
+                return None
+        return cursor
 
 
 StrategyInfo = PageInfo | PageOffsetInfo | LimitOffsetInfo | StringCursorInfo | DictCursorInfo

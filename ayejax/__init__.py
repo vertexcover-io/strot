@@ -211,10 +211,19 @@ class _AnalyzerContext:
     ) -> None:
         self._page = page
         self._logger = logger
-        self._llm_client = llm.LLMClient(
+        self._anthropic_client = llm.LLMClient(
             provider="anthropic",
             model="claude-sonnet-4-20250514",
             api_key=os.getenv("AYEJAX_ANTHROPIC_API_KEY"),
+            cost_per_1m_input=3.0,
+            cost_per_1m_output=15.0,
+        )
+        self._groq_client = llm.LLMClient(
+            provider="groq",
+            model="moonshotai/kimi-k2-instruct",
+            api_key=os.getenv("AYEJAX_GROQ_API_KEY"),
+            cost_per_1m_input=1.0,
+            cost_per_1m_output=3.0,
         )
 
         self._js_ctx = _JSContext(page)
@@ -261,25 +270,32 @@ class _AnalyzerContext:
 
     async def request_llm_completion(
         self,
+        client: llm.LLMClient,
         event: str,
         input: llm.LLMInput,
         json: bool,
         validator: Callable[[str], Any],
     ) -> Any:
         try:
-            self._logger.info(event, action="llm-completion", status="pending")
-            completion = await self._llm_client.get_completion(input, json=json)
+            self._logger.info(
+                event, action="llm-completion", provider=client.provider, model=client.model, status="pending"
+            )
+            completion = await client.get_completion(input, json=json)
             self._logger.info(
                 event,
                 action="llm-completion",
+                provider=client.provider,
+                model=client.model,
                 status="success",
                 result=completion.value,
                 input_tokens=completion.input_tokens,
                 output_tokens=completion.output_tokens,
-                cost=completion.calculate_cost(3.0, 15.0),
+                cost=client.calculate_cost(completion.input_tokens, completion.output_tokens),
             )
         except Exception as e:
-            self._logger.info(event, action="llm-completion", status="failed", reason=e)
+            self._logger.info(
+                event, action="llm-completion", provider=client.provider, model=client.model, status="failed", reason=e
+            )
             raise
 
         try:
@@ -321,6 +337,7 @@ class _AnalyzerContext:
                 return cast(
                     tuple[str, int],
                     await self.request_llm_completion(
+                        client=self._groq_client,
                         event="code-generation",
                         input=llm_input,
                         json=False,
@@ -344,6 +361,7 @@ class _AnalyzerContext:
                 return cast(
                     PaginationKeys,
                     await self.request_llm_completion(
+                        client=self._anthropic_client,
                         event="detect-pagination",
                         input=llm_input,
                         json=True,
@@ -378,17 +396,17 @@ class _AnalyzerContext:
                     if patterns:
                         return pagination.strategy.StringCursorInfo(
                             cursor_key=cursor_key,
-                            start_cursor=None,
+                            default_cursor=cursor,
                             patterns=patterns,
                         )
             elif isinstance(cursor, dict):
                 for c_response in self._captured_responses:
-                    pattern_map = pagination.strategy.DictCursorInfo.generate_pattern_map(c_response.value, cursor)
-                    if any(pattern_map.values()):
+                    patterns_map = pagination.strategy.DictCursorInfo.generate_patterns_map(c_response.value, cursor)
+                    if any(patterns_map.values()):
                         return pagination.strategy.DictCursorInfo(
                             cursor_key=cursor_key,
-                            start_cursor=None,
-                            pattern_map=pattern_map,
+                            default_cursor=cursor,
+                            patterns_map=patterns_map,
                         )
 
     async def run_step(self, query: str) -> Response | None:  # noqa: C901
@@ -401,6 +419,7 @@ class _AnalyzerContext:
             result = cast(
                 AnalysisResult,
                 await self.request_llm_completion(
+                    client=self._anthropic_client,
                     event="run-step",
                     input=llm.LLMInput(prompt=prompt, image=screenshot),
                     json=True,
@@ -436,21 +455,29 @@ class _AnalyzerContext:
 
         if point := result.close_overlay_popup_coords:
             self._logger.info(
-                "run-step", context=get_context(point), step="close-overlay-popup", action="click", point=point
+                "run-step",
+                context=get_context(point),
+                step="close-overlay-popup",
+                action="click",
+                point=point.model_dump(),
             )
             if await self._js_ctx.click_at_point(point):
                 return
 
         if point := result.load_more_content_coords:
             self._logger.info(
-                "run-step", context=get_context(point), step="load-more-content", action="click", point=point
+                "run-step",
+                context=get_context(point),
+                step="load-more-content",
+                action="click",
+                point=point.model_dump(),
             )
             if await self._js_ctx.click_at_point(point):
                 return
 
         if point := result.skip_to_content_coords:
             self._logger.info(
-                "run-step", context=get_context(point), step="skip-to-content", action="click", point=point
+                "run-step", context=get_context(point), step="skip-to-content", action="click", point=point.model_dump()
             )
             if await self._js_ctx.click_at_point(point):
                 return
@@ -498,13 +525,13 @@ class _AnalyzerContext:
             )
 
             request_parameters = response.request.parameters
+            self._logger.info(
+                "analysis",
+                action="detect-pagination",
+                request_parameters=request_parameters,
+                status="pending",
+            )
             if request_parameters and not pagination_keys.strategy_available():
-                self._logger.info(
-                    "analysis",
-                    action="detect-pagination",
-                    request_parameters=request_parameters,
-                    status="pending",
-                )
                 pagination_keys = await self.detect_pagination_keys(request_parameters)
 
             pagination_strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
@@ -521,10 +548,9 @@ class _AnalyzerContext:
             if isinstance(
                 pagination_strategy, (pagination.strategy.StringCursorInfo, pagination.strategy.DictCursorInfo)
             ):
-                pagination_strategy.start_cursor = first_response.request.parameters.get(pagination_strategy.cursor_key)
                 log_kwargs = {
                     "cursor_key": pagination_strategy.cursor_key,
-                    "start_cursor": pagination_strategy.start_cursor,
+                    "default_cursor": pagination_strategy.default_cursor,
                 }
             else:
                 log_kwargs = pagination_strategy.model_dump()

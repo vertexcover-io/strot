@@ -3,7 +3,7 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -132,7 +132,7 @@ class S3LogHandler(logging.Handler):
 
             # Add timestamp and convert to JSON
             log_entry = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "level": record.levelname,
                 "message": formatted_record,
                 "logger": record.name,

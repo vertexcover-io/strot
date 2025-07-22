@@ -60,12 +60,6 @@ class LLMCompletion(BaseModel):
     provider: LLMProvider
     model: str
 
-    def calculate_cost(self, cost_per_1m_input: float, cost_per_1m_output: float) -> float:
-        """
-        Compute total cost given rates per million tokens.
-        """
-        return self.input_tokens / 1_000_000 * cost_per_1m_input + self.output_tokens / 1_000_000 * cost_per_1m_output
-
 
 class LLMClient:
     def __init__(
@@ -74,9 +68,13 @@ class LLMClient:
         provider: LLMProvider,
         model: str,
         api_key: str | None = None,
+        cost_per_1m_input: float,
+        cost_per_1m_output: float,
     ):
         self.__provider = provider.lower()
         self.__model = model
+        self.__cost_per_1m_input = cost_per_1m_input
+        self.__cost_per_1m_output = cost_per_1m_output
 
         client: anthropic.AsyncClient | openai.AsyncClient
         match self.__provider:
@@ -104,6 +102,14 @@ class LLMClient:
     @property
     def model(self) -> str:
         return self.__model
+
+    def calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
+        """
+        Compute total cost given rates per million tokens.
+        """
+        return (
+            input_tokens / 1_000_000 * self.__cost_per_1m_input + output_tokens / 1_000_000 * self.__cost_per_1m_output
+        )
 
     async def get_completion(self, input: LLMInput, *, json: bool = False) -> LLMCompletion:
         """
