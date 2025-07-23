@@ -24,7 +24,7 @@ from ayejax._interface.api.database.models.output import Output
 from ayejax._interface.api.settings import settings
 from ayejax.logging import get_logger
 from ayejax.logging.handlers import S3HandlerConfig
-from ayejax.pagination.strategy import DictCursorInfo, LimitOffsetInfo, PageInfo, PageOffsetInfo, StringCursorInfo
+from ayejax.pagination.strategy import LimitOffsetInfo, MapCursorInfo, PageInfo, PageOffsetInfo, StringCursorInfo
 from ayejax.report_generation import generate_report
 from ayejax.tag import TagLiteral
 from ayejax.types import Output as AyejaxOutput
@@ -116,7 +116,7 @@ async def get_job(
     result = None
     if job.status == "ready" and job.output_id:
         try:
-            result = await execute_api_request(job.output_id, limit, offset)
+            result = await execute_output(job.output_id, limit, offset)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to execute API request: {e}") from e
 
@@ -276,10 +276,9 @@ async def generate_data(output: AyejaxOutput, limit: int, offset: int):  # noqa:
             return namespace["extract_data"](response_text)
         return [response_text]
 
-    pagination_strategy = output.pagination_strategy
-    initial_page_size = output.items_count_on_first_extraction
     global_position = 0
     remaining_items = limit
+    initial_page_size = output.items_count_on_first_extraction
 
     def _slice(data: list) -> list:
         if not data:
@@ -300,41 +299,48 @@ async def generate_data(output: AyejaxOutput, limit: int, offset: int):  # noqa:
 
         return []
 
+    pagination_strategy = output.pagination_strategy
     if isinstance(pagination_strategy, LimitOffsetInfo):
-        # For limit/offset, we need to determine how many API calls to make
-        # based on the API's original limit (initial_page_size)
-        api_limit = initial_page_size
-        current_offset = offset
+        state = {
+            pagination_strategy.limit_key: str(limit),
+            pagination_strategy.offset_key: str(offset),
+        }
+        first_request = True
 
         while remaining_items > 0:
-            items_to_request = min(remaining_items, api_limit)
+            data = extract_data(await make_request(output, state))
 
-            data = extract_data(
-                await make_request(
-                    output,
-                    {
-                        pagination_strategy.limit_key: str(items_to_request),
-                        pagination_strategy.offset_key: str(current_offset),
-                    },
-                )
-            )
+            # Detect API's actual limit on first request
+            if first_request and len(data) < limit:
+                state[pagination_strategy.limit_key] = str(len(data))
+                first_request = False
 
             if slice_data := _slice(data):
                 yield slice_data
+                state[pagination_strategy.offset_key] = str(
+                    int(state[pagination_strategy.offset_key]) + len(slice_data)
+                )
             else:
                 break
-
-            current_offset += items_to_request
 
     elif isinstance(pagination_strategy, PageInfo):
         start_page = (offset // initial_page_size) + 1
         end_item = offset + limit
         end_page = ((end_item - 1) // initial_page_size) + 1
 
-        global_position = (start_page - 1) * initial_page_size  # Items before start_page
+        global_position = (start_page - 1) * initial_page_size
+        state, first_request = {}, True
+        if pagination_strategy.limit_key:
+            state[pagination_strategy.limit_key] = str(limit)
 
         for page in range(start_page, end_page + 1):
-            data = extract_data(await make_request(output, {pagination_strategy.page_key: str(page)}))
+            state[pagination_strategy.page_key] = str(page)
+            data = extract_data(await make_request(output, state))
+
+            # Detect API's actual limit on first request
+            if pagination_strategy.limit_key and first_request and len(data) < limit:
+                state[pagination_strategy.limit_key] = str(len(data))
+                first_request = False
 
             if slice_data := _slice(data):
                 yield slice_data
@@ -368,27 +374,37 @@ async def generate_data(output: AyejaxOutput, limit: int, offset: int):  # noqa:
             else:
                 break
 
-    elif isinstance(pagination_strategy, (StringCursorInfo, DictCursorInfo)):
-        last_cursor = None
-        current_response = await make_request(output, {pagination_strategy.cursor_key: None})
-        repr_fn = lambda x: json_dumps(x) if isinstance(pagination_strategy, DictCursorInfo) else x
+    elif isinstance(pagination_strategy, (StringCursorInfo, MapCursorInfo)):
+        state = {pagination_strategy.cursor_key: None}
+        if pagination_strategy.limit_key:
+            state[pagination_strategy.limit_key] = limit
+
+        repr_fn = lambda x: json_dumps(x) if isinstance(pagination_strategy, MapCursorInfo) else x
+        first_request = True
+
         while remaining_items > 0:
+            current_response = await make_request(output, state)
             data = extract_data(current_response)
+
+            # Detect API's actual limit on first request
+            if pagination_strategy.limit_key and first_request and len(data) < limit:
+                state[pagination_strategy.limit_key] = str(len(data))
+                first_request = False
+
             if slice_data := _slice(data):
                 yield slice_data
             else:
                 break
 
             next_cursor = pagination_strategy.extract_cursor(current_response)
-            if next_cursor is None or next_cursor == last_cursor:
+            if next_cursor is None or repr_fn(next_cursor) == state[pagination_strategy.cursor_key]:
                 break
-            last_cursor = next_cursor
-            current_response = await make_request(output, {pagination_strategy.cursor_key: repr_fn(next_cursor)})
+            state[pagination_strategy.cursor_key] = repr_fn(next_cursor)
     else:
         yield _slice(extract_data(await make_request(output, {})))
 
 
-async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[str, str]:
+async def execute_output(output_id: UUID, limit: int, offset: int) -> dict[str, str]:
     async with sessionmanager.session() as db:
         result = await db.execute(select(Output).where(Output.id == output_id))
         output_record = result.scalar_one_or_none()
@@ -397,18 +413,22 @@ async def execute_api_request(output_id: UUID, limit: int, offset: int) -> dict[
             raise Exception(f"Output {output_id!s} not found")
 
         output = AyejaxOutput.model_validate(output_record.value)
+
+        data_list = []
+        error_message = None
         try:
-            data_list = []
             async for data in generate_data(output, limit, offset):
                 data_list.extend(data)
-
-            output_record.usage_count += 1
-            output_record.last_used_at = datetime.now(timezone.utc)
-            await db.commit()
-            await db.refresh(output_record)
-
-            result = {output_record.tag: data_list, "count": len(data_list)}
         except Exception as e:
-            return {"error": f"Pagination processing failed: {e}"}
+            error_message = f"External API request failed: {e}"
+
+        output_record.usage_count += 1
+        output_record.last_used_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(output_record)
+
+        result = {output_record.tag: data_list, "count": len(data_list)}
+        if error_message:
+            result["error"] = error_message
 
         return result

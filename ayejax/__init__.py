@@ -387,7 +387,7 @@ class _AnalyzerContext:
                 offset_key=keys.offset_key,
             )
         elif keys.page_number_key:
-            return pagination.strategy.PageInfo(page_key=keys.page_number_key)
+            return pagination.strategy.PageInfo(page_key=keys.page_number_key, limit_key=keys.limit_key)
         elif cursor_key := keys.cursor_key:
             cursor = parameters.get(cursor_key)
             if isinstance(cursor, str):
@@ -396,15 +396,17 @@ class _AnalyzerContext:
                     if patterns:
                         return pagination.strategy.StringCursorInfo(
                             cursor_key=cursor_key,
+                            limit_key=keys.limit_key,
                             default_cursor=cursor,
                             patterns=patterns,
                         )
             elif isinstance(cursor, dict):
                 for c_response in self._captured_responses:
-                    patterns_map = pagination.strategy.DictCursorInfo.generate_patterns_map(c_response.value, cursor)
+                    patterns_map = pagination.strategy.MapCursorInfo.generate_patterns_map(c_response.value, cursor)
                     if any(patterns_map.values()):
-                        return pagination.strategy.DictCursorInfo(
+                        return pagination.strategy.MapCursorInfo(
                             cursor_key=cursor_key,
+                            limit_key=keys.limit_key,
                             default_cursor=cursor,
                             patterns_map=patterns_map,
                         )
@@ -546,7 +548,7 @@ class _AnalyzerContext:
                 continue
 
             if isinstance(
-                pagination_strategy, (pagination.strategy.StringCursorInfo, pagination.strategy.DictCursorInfo)
+                pagination_strategy, (pagination.strategy.StringCursorInfo, pagination.strategy.MapCursorInfo)
             ):
                 log_kwargs = {
                     "cursor_key": pagination_strategy.cursor_key,
