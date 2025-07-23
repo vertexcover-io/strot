@@ -1,20 +1,14 @@
-import contextlib
-import os
-import tempfile
 from datetime import datetime, timezone
 from json import dumps as json_dumps
-from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import boto3
-import botocore.exceptions
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from playwright.async_api import Browser
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy import select
-from starlette.responses import HTMLResponse
 
 import ayejax
 from ayejax._interface.api.auth import AuthDependency
@@ -25,7 +19,6 @@ from ayejax._interface.api.settings import settings
 from ayejax.logging import get_logger
 from ayejax.logging.handlers import S3HandlerConfig
 from ayejax.pagination.strategy import LimitOffsetInfo, MapCursorInfo, PageInfo, PageOffsetInfo, StringCursorInfo
-from ayejax.report_generation import generate_report
 from ayejax.tag import TagLiteral
 from ayejax.types import Output as AyejaxOutput
 
@@ -130,40 +123,6 @@ async def get_job(
         message=job.message,
         result=result,
     )
-
-
-@router.get("/{job_id}/report", response_class=HTMLResponse)
-async def generate_job_report(
-    job_id: UUID,
-    db: DBSessionDependency,
-    _: AuthDependency,
-):
-    """Generate job report"""
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
-
-    if not job:
-        return HTMLResponse(content=f"<h1>Job {job_id!s} not found</h1>", status_code=404)
-
-    s3_client = boto3_session.client(
-        "s3",
-        endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-    )
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        local_path = tmp.name
-
-    try:
-        s3_client.download_file(settings.AWS_S3_LOG_BUCKET, f"job-{job_id!s}.log", local_path)
-        content = generate_report(Path(local_path).read_text())
-    except botocore.exceptions.BotoCoreError as e:
-        return HTMLResponse(content=f"<h1>Log download error: {e!s}</h1>", status_code=500)
-    except Exception as e:
-        return HTMLResponse(content=f"<h1>Report generation failed: {e!s}</h1>", status_code=500)
-    finally:
-        with contextlib.suppress(OSError):
-            os.remove(local_path)
-
-    return HTMLResponse(content=content, status_code=200)
 
 
 async def create_output(request: CreateJobRequest, output: AyejaxOutput, db: DBSessionDependency):

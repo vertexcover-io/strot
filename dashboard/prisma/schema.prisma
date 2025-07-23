@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Job {
+  id           String     @id @db.Uuid
+  url          String
+  tag          String     @db.VarChar(50)
+  status       String     @db.VarChar(20)
+  message      String
+  outputId     String?    @map("output_id") @db.Uuid
+  createdAt    DateTime   @map("created_at") @db.Timestamptz
+  completedAt  DateTime?  @map("completed_at") @db.Timestamptz
+
+  output       Output?    @relation(fields: [outputId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([url, tag])
+  @@map("jobs")
+}
+
+model Output {
+  id           String     @id @db.Uuid
+  url          String
+  tag          String     @db.VarChar(50)
+  value        Json
+  usageCount   Int        @default(0) @map("usage_count")
+  lastUsedAt   DateTime?  @map("last_used_at") @db.Timestamptz
+  createdAt    DateTime   @map("created_at") @db.Timestamptz
+  updatedAt    DateTime   @map("updated_at") @db.Timestamptz
+
+  jobs         Job[]
+
+  @@unique([url, tag], name: "outputs_url_tag_unique")
+  @@index([tag], name: "idx_outputs_tag")
+  @@index([usageCount, lastUsedAt], name: "idx_outputs_popularity")
+  @@map("outputs")
+}

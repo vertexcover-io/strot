@@ -552,6 +552,7 @@ class _AnalyzerContext:
             ):
                 log_kwargs = {
                     "cursor_key": pagination_strategy.cursor_key,
+                    "limit_key": pagination_strategy.limit_key,
                     "default_cursor": pagination_strategy.default_cursor,
                 }
             else:
