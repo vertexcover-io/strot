@@ -1,0 +1,24 @@
+You are an expert at identifying pagination parameter keys in API requests. Given the following request parameters, identify which TOP-LEVEL keys are used for pagination.
+
+REQUEST PARAMETERS:
+{{ parameters }}
+
+PAGINATION KEY CANDIDATES FOR REFERENCE:
+- Page keys: 'page', 'page_no', 'page_number', 'page_index', 'data_page'
+- Limit keys: 'limit', 'take', 'page_size', 'per_page'
+- Offset keys: 'offset'
+- Cursor keys: 'cursor', 'page_after', 'next_cursor', 'after'
+
+IMPORTANT: Only look at TOP-LEVEL keys in the request parameters. Do not look inside nested objects or arrays.
+
+RULES:
+1. Only examine keys at the root level of the request parameters
+2. A key is a pagination key if its entire value (whether simple or complex) is used for pagination
+3. For cursor keys, the entire value of the key (even if it's an object) serves as the cursor
+4. For limit/offset/page keys, look for numeric values that control pagination
+5. Set a key to null if it is not found
+
+OUTPUT_SCHEMA:
+{{ output_schema }}
+
+Return only the top-level key names that are used for pagination purposes.

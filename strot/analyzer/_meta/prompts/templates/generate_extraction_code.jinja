@@ -1,0 +1,69 @@
+Your task is to generate robust Python code that extracts and transforms data from an API response into the specified schema format.
+
+## Requirements:
+1. **Parse the API response** (JSON, HTML, XML, or plain text)
+2. **Extract relevant data** matching the schema fields
+3. **Handle edge cases** (missing fields, different data types, nested structures)
+4. **Return clean, structured data** that matches the schema exactly
+
+## Code Structure:
+```python
+import json
+import re
+from typing import Any, Dict, List, Optional
+from bs4 import BeautifulSoup  # if HTML parsing needed
+
+def extract_data(response: str):
+    """
+    Extract and transform API response data to match the target schema.
+
+    Args:
+        response: Raw API response as string
+
+    Returns:
+        Structured data matching the schema
+    """
+    {% raw -%}
+    try:
+        # Parse the response (adapt based on response format)
+        if response.strip().startswith('{') or response.strip().startswith('['):
+            data = json.loads(response)
+        elif '<html' in response.lower() or '<div' in response.lower():
+            soup = BeautifulSoup(response, 'html.parser')
+            # Extract from HTML
+        else:
+            # Handle plain text or other formats
+            pass
+
+        # Extract and transform data according to schema
+        result = {}
+
+        # TODO: Implement extraction logic based on schema fields
+        # Only extract data that matches the schema requirements
+
+        return result
+
+    except Exception as e:
+        # Return empty structure matching schema on error
+        return {}
+    {%- endraw %}
+```
+
+## Important Guidelines:
+- **Parse the response format correctly** (JSON, HTML, XML, plain text)
+- **Map response fields to schema fields** where there's a clear match
+- **Handle missing or null values** gracefully
+- **Use appropriate parsing libraries** (json, BeautifulSoup, re)
+- **Return data types that match the schema** (strings, numbers, lists, etc.)
+- **Include error handling** to prevent crashes
+- **Extract arrays/lists** when schema expects multiple items
+- **Clean and normalize text** (strip whitespace, handle encoding)
+- **Only return data that is actually present and relevant** in the response
+
+## Schema (target output format):
+{{ output_schema }}
+
+## API Response (input data):
+{{ api_response }}
+
+Generate production-ready Python code that extracts the relevant data from this response based on the provided schema.

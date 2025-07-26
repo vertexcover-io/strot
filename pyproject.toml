@@ -1,27 +1,26 @@
 [project]
-name = "ayejax"
+name = "strot"
 version = "0.0.1"
-description = "Get ajax call using natural language query"
+description = "Discover API endpoints with natural language"
 authors = [{ name = "Harsh Verma", email = "harsh@vertexcover.io" }]
 readme = "README.md"
 keywords = ['python']
-requires-python = ">=3.12,<4.0"
+requires-python = ">=3.10,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "alembic>=1.16.3",
     "anthropic>=0.50.0",
-    "asyncpg>=0.30.0",
     "beautifulsoup4>=4.13.4",
     "boto3>=1.39.4",
-    "cyclopts>=3.19.0",
-    "fastapi>=0.116.0",
+    "docstring-parser>=0.17.0",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
     "json-repair>=0.44.1",
@@ -30,18 +29,15 @@ dependencies = [
     "pillow>=11.2.1",
     "playwright>=1.51.0",
     "pydantic>=2.11.3",
-    "pydantic-settings>=2.10.1",
     "python-magic>=0.4.27",
     "rapidfuzz>=3.13.0",
     "regex>=2024.11.6",
-    "sqlalchemy>=2.0.41",
     "structlog>=25.4.0",
-    "uvicorn>=0.35.0",
 ]
 
 [project.urls]
 
-Repository = "https://github.com/vertexcover-io/ayejax"
+Repository = "https://github.com/vertexcover-io/strot"
 
 [tool.uv]
 dev-dependencies = [
@@ -53,18 +49,20 @@ dev-dependencies = [
     "ruff>=0.6.9",
 ]
 
-[project.scripts]
-ayejax = "ayejax._interface.cli:app"
-
 [build-system]
 requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["strot*"]
+
 [tool.setuptools]
-py-modules = ["ayejax"]
+include-package-data = true
+package-data = {"strot" = ["**/*.txt", "**/*.jinja"]}
 
 [tool.mypy]
-files = ["ayejax"]
+files = ["strot", "api"]
 disallow_untyped_defs = true
 disallow_any_unimported = true
 no_implicit_optional = true
