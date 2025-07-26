@@ -1,5 +1,7 @@
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
+import boto3
+from botocore.errorfactory import ClientError
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +9,21 @@ from strot.analyzer import create_browser
 from strot_api.database import sessionmanager
 from strot_api.routes import jobs, labels
 from strot_api.settings import settings
+
+boto3_session = boto3.Session(
+    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    region_name=settings.AWS_REGION,
+)
+
+s3_client = boto3_session.client("s3", endpoint_url=settings.AWS_S3_ENDPOINT_URL)
+
+try:
+    s3_client.head_bucket(Bucket=settings.AWS_S3_LOG_BUCKET)
+except ClientError as e:
+    if e.response["Error"]["Code"] == "404":
+        with suppress(ClientError):
+            s3_client.create_bucket(Bucket=settings.AWS_S3_LOG_BUCKET)
 
 
 @asynccontextmanager
