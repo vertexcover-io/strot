@@ -1,0 +1,22 @@
+# fly.toml app configuration file generated for strot on 2025-07-11T22:16:40+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'strot'
+primary_region = 'bom'
+
+[build]
+
+[http_service]
+  internal_port = 1337
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '2gb'
+  cpu_kind = 'shared'
+  cpus = 2
