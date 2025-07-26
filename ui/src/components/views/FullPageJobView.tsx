@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { GetJobResponse } from "@/types";
 import { apiClient } from "@/lib/api-client";
@@ -49,7 +49,13 @@ export function FullPageJobView({
 
   // Fetch job data when overlay opens or refresh trigger changes
   useEffect(() => {
-    if (isOpen) {
+    console.log("FullPageJobView useEffect:", {
+      isOpen,
+      jobId,
+      refreshTrigger,
+    });
+    if (isOpen && jobId) {
+      console.log("Calling fetchJobData for jobId:", jobId);
       fetchJobData();
     }
   }, [isOpen, jobId, refreshTrigger]);
@@ -63,6 +69,28 @@ export function FullPageJobView({
     }, 15000);
 
     return () => clearInterval(interval);
+  }, [isOpen, jobData?.status]);
+
+  // Trigger final refresh when job status changes from pending to ready/failed
+  const previousStatus = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !jobData) return;
+
+    // Only trigger final refresh if status changed FROM "pending" TO "ready/failed"
+    if (
+      previousStatus.current === "pending" &&
+      (jobData.status === "ready" || jobData.status === "failed")
+    ) {
+      const timer = setTimeout(() => {
+        setRefreshTrigger((prev) => prev + 1);
+      }, 1000); // Small delay to ensure logs are written
+
+      previousStatus.current = jobData.status;
+      return () => clearTimeout(timer);
+    }
+
+    // Update previous status
+    previousStatus.current = jobData.status;
   }, [isOpen, jobData?.status]);
 
   const fetchSampleData = async () => {
@@ -148,7 +176,11 @@ export function FullPageJobView({
     return `curl "${endpoint}"`;
   };
 
-  const shouldAutoRefresh = jobData?.status === "pending";
+  const shouldAutoRefresh =
+    jobData?.status === "pending" || jobData?.status === "ready";
+
+  // For header display, only show auto-refresh indicator when actually needed
+  const shouldShowAutoRefreshIndicator = jobData?.status === "pending";
   const hasSource = jobData?.status === "ready" && jobData?.source;
 
   return (
@@ -172,7 +204,7 @@ export function FullPageJobView({
                         {jobData.status}
                       </span>
                     </div>
-                    {shouldAutoRefresh && (
+                    {shouldShowAutoRefreshIndicator && (
                       <div className="flex items-center bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
                         <div className="animate-pulse w-2 h-2 bg-amber-400 rounded-full mr-2"></div>
                         <span className="text-sm font-medium text-amber-700">
@@ -415,6 +447,7 @@ export function FullPageJobView({
             {activeTab === "logs" && (
               <div className="h-full px-25">
                 <LogViewer
+                  key={`logviewer-${jobId}`}
                   jobId={jobId}
                   isRawMode={isRawMode}
                   autoRefresh={shouldAutoRefresh}

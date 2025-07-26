@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,6 +15,8 @@ interface SlideNavigationProps<T> {
   renderItem: (item: T, index: number) => React.ReactNode;
   getItemTitle?: (item: T, index: number) => string;
   className?: string;
+  currentIndex?: number; // External state control
+  onIndexChange?: (index: number) => void; // External state control
 }
 
 export function SlideNavigation<T>({
@@ -24,8 +26,30 @@ export function SlideNavigation<T>({
   renderItem,
   getItemTitle,
   className = "",
+  currentIndex: externalCurrentIndex,
+  onIndexChange,
 }: SlideNavigationProps<T>) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [internalCurrentIndex, setInternalCurrentIndex] = useState(0);
+
+  // Use external state if provided, otherwise use internal state
+  const currentIndex =
+    externalCurrentIndex !== undefined
+      ? externalCurrentIndex
+      : internalCurrentIndex;
+  const setCurrentIndex = (index: number) => {
+    if (onIndexChange) {
+      onIndexChange(index);
+    } else {
+      setInternalCurrentIndex(index);
+    }
+  };
+
+  // Adjust index if it's out of bounds
+  useEffect(() => {
+    if (currentIndex >= items.length && items.length > 0) {
+      setCurrentIndex(items.length - 1);
+    }
+  }, [items.length, currentIndex]);
 
   if (items.length === 0) {
     return null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { ReportData, parseJSONLLogs } from "@/lib/report-generator";
 import { SlideNavigation } from "./SlideNavigation";
 import { AnalysisStep } from "./AnalysisStep";
@@ -29,8 +29,87 @@ export function LogViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollPosition = useRef<number>(0);
+  const isRestoring = useRef<boolean>(false);
+
+  // Store slide positions to persist across refreshes using sessionStorage
+  const getStoredPositions = () => {
+    try {
+      const stored = sessionStorage.getItem(`slidePositions_${jobId}`);
+      return stored
+        ? JSON.parse(stored)
+        : { analysis: 0, pagination: 0, codegen: 0 };
+    } catch {
+      return { analysis: 0, pagination: 0, codegen: 0 };
+    }
+  };
+
+  const [slidePositions, setSlidePositions] =
+    useState<Record<string, number>>(getStoredPositions);
+
+  // Check if any part of the analysis is still pending
+  const hasIncompleteAnalysis = () => {
+    if (!reportData) return false;
+
+    // Check if last code generation is still pending
+    if (reportData.code_generations.length > 0) {
+      const lastCodeGen =
+        reportData.code_generations[reportData.code_generations.length - 1];
+      if (lastCodeGen.status === "pending") {
+        return true;
+      }
+    }
+
+    // Check if any analysis step is still pending
+    if (reportData.analysis_steps.length > 0) {
+      const lastAnalysis =
+        reportData.analysis_steps[reportData.analysis_steps.length - 1];
+      if (lastAnalysis.status === "pending") {
+        return true;
+      }
+    }
+
+    // Check if any pagination detection is still pending
+    if (reportData.pagination_detections.length > 0) {
+      const lastPagination =
+        reportData.pagination_detections[
+          reportData.pagination_detections.length - 1
+        ];
+      if (lastPagination.status === "pending") {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // Save positions to sessionStorage whenever they change
+  const updateSlidePosition = (section: string, index: number) => {
+    const newPositions = { ...slidePositions, [section]: index };
+    setSlidePositions(newPositions);
+    try {
+      sessionStorage.setItem(
+        `slidePositions_${jobId}`,
+        JSON.stringify(newPositions),
+      );
+    } catch {
+      // Ignore storage errors
+    }
+  };
 
   const fetchLogs = async () => {
+    // Get scroll position from sessionStorage (survives component re-renders)
+    let savedPosition = scrollPosition.current;
+    try {
+      const stored = sessionStorage.getItem(`scrollPosition_${jobId}`);
+      if (stored) {
+        savedPosition = parseInt(stored, 10);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     try {
       setError(null);
       const logs = await getJobLogFile(jobId);
@@ -48,6 +127,17 @@ export function LogViewer({
       setReportData(null);
     } finally {
       setLoading(false);
+
+      // Restore scroll position after a delay
+      if (savedPosition > 0) {
+        isRestoring.current = true;
+        setTimeout(() => {
+          if (containerRef.current) {
+            containerRef.current.scrollTop = savedPosition;
+            isRestoring.current = false;
+          }
+        }, 50);
+      }
     }
   };
 
@@ -56,16 +146,45 @@ export function LogViewer({
     fetchLogs();
   }, [jobId]);
 
-  // Auto refresh for pending jobs
+  // Auto refresh for pending jobs or incomplete analysis
   useEffect(() => {
     if (!autoRefresh) return;
+
+    // Continue refreshing if analysis has incomplete parts, even if job status is "ready"
+    const shouldKeepRefreshing = hasIncompleteAnalysis();
+    if (!shouldKeepRefreshing) return;
 
     const interval = setInterval(() => {
       fetchLogs();
     }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, jobId]);
+  }, [autoRefresh, refreshInterval, jobId, reportData]);
+
+  // Track scroll position as user scrolls
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      if (!isRestoring.current) {
+        const newPosition = container.scrollTop;
+        scrollPosition.current = newPosition;
+        // Also store in sessionStorage to survive component re-renders
+        try {
+          sessionStorage.setItem(
+            `scrollPosition_${jobId}`,
+            newPosition.toString(),
+          );
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [reportData, logContent]); // Add dependencies so it runs after content is rendered
 
   // Re-parse when mode changes
   useEffect(() => {
@@ -192,7 +311,7 @@ export function LogViewer({
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div ref={containerRef} className="h-full overflow-y-auto">
       <div className="space-y-6 p-1">
         {/* Header with last update info */}
         {lastFetch && (
@@ -275,6 +394,8 @@ export function LogViewer({
           getItemTitle={(step) =>
             `Step ${step.step_count} (${step.status || "unknown"})`
           }
+          currentIndex={slidePositions.analysis}
+          onIndexChange={(index) => updateSlidePosition("analysis", index)}
         />
 
         {/* Pagination Detection */}
@@ -289,6 +410,8 @@ export function LogViewer({
             getItemTitle={(detection, index) =>
               `Attempt ${index + 1} (${detection.status || "unknown"})`
             }
+            currentIndex={slidePositions.pagination}
+            onIndexChange={(index) => updateSlidePosition("pagination", index)}
           />
         )}
 
@@ -308,6 +431,8 @@ export function LogViewer({
             getItemTitle={(generation, index) =>
               `Generation ${index + 1} (${generation.status || "unknown"})`
             }
+            currentIndex={slidePositions.codegen}
+            onIndexChange={(index) => updateSlidePosition("codegen", index)}
           />
         )}
       </div>
