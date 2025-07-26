@@ -59,7 +59,7 @@ include = ["strot*"]
 
 [tool.setuptools]
 include-package-data = true
-package-data = {"strot" = ["**/*.txt", "**/*.jinja"]}
+package-data = {"strot" = ["**/*.js", "**/*.jinja"]}
 
 [tool.mypy]
 files = ["strot", "api"]
