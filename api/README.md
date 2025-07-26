@@ -74,7 +74,6 @@ docker-compose up api
 - `POST /jobs` - Create a new job
 - `GET /jobs/{job_id}` - Get job details
 - `DELETE /jobs/{job_id}` - Delete a job
-- `GET /jobs/{job_id}/logs` - Get job logs
 - `GET /labels` - List all labels
 - `POST /labels` - Create a new label
 - `PUT /labels/{label_id}` - Update a label
