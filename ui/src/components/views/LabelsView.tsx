@@ -70,9 +70,7 @@ export function LabelsView({ onLabelClick, refreshTrigger }: LabelsViewProps) {
 
   // Handle pagination
   useEffect(() => {
-    if (currentPage > 0) {
-      fetchLabels(currentPage * limit);
-    }
+    fetchLabels(currentPage * limit);
   }, [currentPage]);
 
   const handleDeleteLabel = async (labelId: string, labelName: string) => {
@@ -137,7 +135,7 @@ export function LabelsView({ onLabelClick, refreshTrigger }: LabelsViewProps) {
       </div>
 
       {/* Labels List */}
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[calc(100vh-30rem)]">
         {error && (
           <div className="p-4 bg-red-50 border-l-4 border-red-400">
             <p className="text-red-700">{error}</p>

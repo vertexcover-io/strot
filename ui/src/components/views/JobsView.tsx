@@ -105,9 +105,7 @@ export function JobsView({
 
   // Handle pagination
   useEffect(() => {
-    if (currentPage > 0) {
-      fetchJobs(currentPage * limit);
-    }
+    fetchJobs(currentPage * limit);
   }, [currentPage]);
 
   const handleDeleteJob = async (jobId: string, status: JobStatus) => {
@@ -258,7 +256,7 @@ export function JobsView({
         </div>
 
         {/* Jobs List */}
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[calc(100vh-30rem)]">
           {error && (
             <div className="p-4 bg-red-50 border-l-4 border-red-400">
               <p className="text-red-700">{error}</p>
