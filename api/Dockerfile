@@ -20,7 +20,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy dependency files first for better caching
 COPY pyproject.toml ./
+RUN touch README.md
 COPY api/pyproject.toml ./api/
+RUN touch api/README.md
 
 # Copy strot package and install it
 COPY strot/ ./strot/
