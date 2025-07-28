@@ -64,9 +64,9 @@ EXPOSE 1337
 RUN printf '#!/bin/sh\n\
 set -e\n\
 echo "Running database migrations..."\n\
-cd /app/api && /opt/venv/bin/alembic upgrade head\n\
+/opt/venv/bin/alembic upgrade head\n\
 echo "Starting API server..."\n\
-cd /app/api && /opt/venv/bin/uvicorn strot_api.main:app --host 0.0.0.0 --port 1337\n' > /start.sh && \
+/opt/venv/bin/uvicorn strot_api.main:app --host 0.0.0.0 --port 1337\n' > /start.sh && \
     chmod +x /start.sh
 
 CMD ["/start.sh"]
