@@ -13,7 +13,7 @@ class Request(BaseModel):
     post_data: dict[str, Any] | str | None = None
 
     @property
-    def parameters(self) -> dict[str, Any]:
+    def parameters(self) -> dict[str, Any] | None:
         def _load_value(value: Any) -> Any:
             if isinstance(value, str):
                 try:
@@ -25,25 +25,28 @@ class Request(BaseModel):
             else:
                 return value
 
+        if self.queries:
+            return _load_value(self.queries)
+
         if self.method.lower() == "post" and isinstance(self.post_data, dict):
             return _load_value(self.post_data)
 
-        return _load_value(self.queries)
+        return None
 
     def apply_state(self, state: dict[str, Any]) -> "Request":
         request = self.model_copy()
-        if request.method.lower() == "post" and isinstance(request.post_data, dict):
-            for key, value in state.items():
-                if value is None:
-                    request.post_data.pop(key, None)
-                else:
-                    request.post_data[key] = value
-        else:
+        if request.queries:
             for key, value in state.items():
                 if value is None:
                     request.queries.pop(key, None)
                 else:
                     request.queries[key] = value
+        elif request.method.lower() == "post" and isinstance(request.post_data, dict):
+            for key, value in state.items():
+                if value is None:
+                    request.post_data.pop(key, None)
+                else:
+                    request.post_data[key] = value
 
         return request
 
