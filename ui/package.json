@@ -1,6 +1,7 @@
 {
     "name": "strot-ui",
     "version": "0.1.0",
+    "author": "Harsh Verma <synacktra.work@gmail.com>",
     "private": true,
     "scripts": {
         "dev": "next dev --turbopack",
