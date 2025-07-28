@@ -26,8 +26,8 @@ class Settings(BaseSettings):
         name = info.data["POSTGRES_DB"]
         return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
 
-    AWS_ACCESS_KEY_ID: str = "minioadmin"
-    AWS_SECRET_ACCESS_KEY: str = "minioadmin"
+    AWS_ACCESS_KEY_ID: str = "strot-user"
+    AWS_SECRET_ACCESS_KEY: str = "secretpassword"
     AWS_REGION: str = "us-east-1"
     AWS_S3_ENDPOINT_URL: str = "http://localhost:9000"
     AWS_S3_LOG_BUCKET: str = "job-logs"

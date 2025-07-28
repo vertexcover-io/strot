@@ -1,48 +1,72 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Create virtual environment
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy dependency files first for better caching
+COPY pyproject.toml ./
+COPY api/pyproject.toml ./api/
+
+# Copy strot package and install it
+COPY strot/ ./strot/
+RUN uv pip install --no-cache-dir .
+
+# Install API dependencies
+WORKDIR /build/api
+RUN uv pip install --no-cache-dir .
+
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
+
 WORKDIR /app
 
-# Install system dependencies
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy strot source code first
-COPY strot/ ./strot/
-COPY pyproject.toml ./
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Install playwright chromium headless shell only
+RUN /opt/venv/bin/playwright install --only-shell --with-deps chromium
 
-# Install strot package directly with pip
-RUN uv pip install --system .
-
-# Copy migration files and alembic config from api directory
-COPY api/migration/ ./migration/
-COPY api/alembic.ini ./
-
-# Copy API project files
+# Copy application code
 COPY api/ ./api/
 
-# Change to API directory
+# Set working directory to API
 WORKDIR /app/api
 
-# Install API dependencies with pip
-RUN uv pip install --system .
-
-# Install chromium
-RUN playwright install chromium --with-deps
-
-# Expose port for the server
+# Expose port
 EXPOSE 1337
 
 # Create startup script
-RUN echo '#!/bin/bash\nset -e\necho "Running database migrations..."\ncd /app && alembic upgrade head\necho "Starting API server..."\ncd /app/api && python -m uvicorn strot_api.main:app --host 0.0.0.0 --port 1337' > /start.sh
-RUN chmod +x /start.sh
+RUN printf '#!/bin/sh\n\
+set -e\n\
+echo "Running database migrations..."\n\
+cd /app/api && /opt/venv/bin/alembic upgrade head\n\
+echo "Starting API server..."\n\
+cd /app/api && /opt/venv/bin/uvicorn strot_api.main:app --host 0.0.0.0 --port 1337\n' > /start.sh && \
+    chmod +x /start.sh
 
-# Run migrations and start server
 CMD ["/start.sh"]
