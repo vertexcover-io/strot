@@ -108,6 +108,10 @@ async def analyze(
                     query=query,
                     source_url=source.request.url,
                 )
+        except Exception as e:
+            logger.info("analysis", action="end", status="failed", url=url, query=query, reason=e)
+            return None
+        else:
             return source
         finally:
             await browser_ctx.close()
@@ -362,7 +366,9 @@ class _AnalyzerContext:
                 )
                 await self._plugin.scroll_to_element(element)
 
-            return response_to_return
+            if element or response_to_return:
+                # If either similar element skip was performed or response was found, end the step
+                return response_to_return
 
         def get_context(point: Point) -> bytes:
             image = draw_point_on_image(screenshot, point)
@@ -404,7 +410,7 @@ class _AnalyzerContext:
         )
         await self._plugin.scroll_to_next_view()
 
-    async def __call__(
+    async def __call__(  # noqa: C901
         self,
         query: str,
         output_schema: type[BaseModel],
@@ -437,44 +443,53 @@ class _AnalyzerContext:
                 data=response.request.post_data,
             )
 
-            request_parameters = response.request.parameters
+            request_parameters = response.request.simple_parameters
             self._logger.info(
                 "analysis",
                 action="detect-pagination",
                 request_parameters=request_parameters,
                 status="pending",
             )
-            if request_parameters and not pagination_keys.strategy_available():
-                pagination_keys = await self.detect_pagination_keys(request_parameters)
+            if request_parameters:
+                if not pagination_keys.strategy_available():
+                    pagination_keys = await self.detect_pagination_keys(request_parameters)
 
-            strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
-            if strategy is None:
+                strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
+                if strategy is None:
+                    self._logger.info(
+                        "analysis",
+                        action="detect-pagination",
+                        request_parameters=request_parameters,
+                        status="failed",
+                        reason="No pagination strategy detected. Trying again after collecting new responses.",
+                    )
+                    continue
+
+                if isinstance(strategy, (pagination_strategy.StringCursorInfo, pagination_strategy.MapCursorInfo)):
+                    log_kwargs = {
+                        "cursor_key": strategy.cursor_key,
+                        "limit_key": strategy.limit_key,
+                        "default_cursor": strategy.default_cursor,
+                    }
+                else:
+                    log_kwargs = strategy.model_dump()
+
+                self._logger.info(
+                    "analysis",
+                    action="detect-pagination",
+                    request_parameters=request_parameters,
+                    status="success",
+                    strategy=strategy.name,
+                    **log_kwargs,
+                )
+            else:
                 self._logger.info(
                     "analysis",
                     action="detect-pagination",
                     request_parameters=request_parameters,
                     status="failed",
-                    reason="No pagination strategy detected. Trying again after collecting new responses.",
+                    reason="No pagination compatible parameters detected.",
                 )
-                continue
-
-            if isinstance(strategy, (pagination_strategy.StringCursorInfo, pagination_strategy.MapCursorInfo)):
-                log_kwargs = {
-                    "cursor_key": strategy.cursor_key,
-                    "limit_key": strategy.limit_key,
-                    "default_cursor": strategy.default_cursor,
-                }
-            else:
-                log_kwargs = strategy.model_dump()
-
-            self._logger.info(
-                "analysis",
-                action="detect-pagination",
-                request_parameters=request_parameters,
-                status="success",
-                strategy=strategy.name,
-                **log_kwargs,
-            )
 
             self._logger.info("analysis", action="code-generation", status="pending")
             code, default_limit = await self.get_extraction_code_and_default_limit(output_schema, response.value)

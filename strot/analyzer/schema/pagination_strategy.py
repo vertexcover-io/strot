@@ -1,6 +1,7 @@
 from json import dumps as json_dumps
 from typing import Any, Callable, Generic, TypeVar
 
+from httpx import HTTPStatusError
 from pydantic import BaseModel, PrivateAttr
 
 from strot.analyzer.schema import Pattern
@@ -51,7 +52,15 @@ class PageInfo(PaginationStrategy):
             state[self.limit_key] = str(tracker.limit)
             state[self.page_key] = "1"
 
-            response = (await request.apply_state(state).make()).text
+            try:
+                response = (await request.apply_state(state).make()).text
+            except HTTPStatusError as e:
+                if e.response.status_code == 400:
+                    state[self.limit_key] = str(actual_limit)
+                    response = (await request.apply_state(state).make()).text
+                else:
+                    raise
+
             data = extract_fn(response)
 
             # If the first request with the requested limit returns no data,
@@ -170,7 +179,14 @@ class LimitOffsetInfo(PaginationStrategy):
         first_request = True
         last_response = None
         while tracker.remaining_items > 0:
-            response = (await request.apply_state(state).make()).text
+            try:
+                response = (await request.apply_state(state).make()).text
+            except HTTPStatusError as e:
+                if e.response.status_code == 400 and first_request:
+                    state[self.limit_key] = str(default_limit)
+                    response = (await request.apply_state(state).make()).text
+                else:
+                    raise
             if response == last_response:
                 break
             last_response = response
@@ -220,7 +236,14 @@ class BaseCursorInfo(PaginationStrategy, Generic[CursorT]):
         first_request = True
         last_response = None
         while tracker.remaining_items > 0:
-            response = (await request.apply_state(state).make()).text
+            try:
+                response = (await request.apply_state(state).make()).text
+            except HTTPStatusError as e:
+                if e.response.status_code == 400 and self.limit_key and first_request:
+                    state[self.limit_key] = str(default_limit)
+                    response = (await request.apply_state(state).make()).text
+                else:
+                    raise
             if response == last_response:
                 break
             last_response = response

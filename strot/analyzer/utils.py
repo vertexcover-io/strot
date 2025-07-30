@@ -1,8 +1,10 @@
 import io
+import json
 import re
 import threading
 import unicodedata
 from base64 import b64encode
+from typing import Any
 
 import regex
 from json_repair import repair_json
@@ -209,3 +211,22 @@ class LimitOffsetTracker:
                 return slice_data
 
         return []
+
+
+def json_load_value(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json_load_value(json.loads(value))
+        except (json.JSONDecodeError, ValueError):
+            return value
+    elif isinstance(value, dict):
+        return {k: json_load_value(v) for k, v in value.items()}
+    else:
+        return value
+
+
+def is_flat_or_flat_dict(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return not isinstance(value, (list, tuple, set))
+
+    return all(not isinstance(v, (dict, list, tuple, set)) for v in value.values())
