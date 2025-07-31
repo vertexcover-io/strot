@@ -1,5 +1,3 @@
-# Strot
-
 <p align="center">
   <strong>Reverse-engineer any website's internal API with natural language</strong>
 </p>
@@ -37,8 +35,8 @@ Strot analyzes websites and discovers their internal API calls for you.
 Get the full Strot experience (Web UI + API) instantly:
 
 ```bash
-export STROT_ANTHROPIC_API_KEY=your_key
-docker compose -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
+STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX docker compose \
+    -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
 ```
 
 Then visit:
@@ -118,6 +116,96 @@ async def get_products():
 
 if __name__ == "__main__":
     asyncio.run(get_products())
+```
+
+## 🧪 Evaluation
+
+Test and validate Strot's analysis accuracy across different websites.
+
+### Setup
+
+```bash
+git clone https://github.com/vertexcover-io/strot.git
+cd strot && uv sync --group eval
+```
+
+<details>
+<summary>Setup Airtable</summary>
+
+1. **Create a new Airtable base** or use an existing one
+
+2. **Create two tables:**
+
+   **Table 1: `analysis_steps`**
+
+   - `job_id` (Single line text)
+   - `index` (Number)
+   - `step` (Single line text)
+   - `context_before_step_execution` (Attachment)
+   - `step_execution_outcome` (Single line text)
+
+   **Table 2: `overview`**
+
+   - `run_id` (Single line text)
+   - `created_at` (Created time)
+   - `target_site` (URL)
+   - `label` (Single line text)
+   - `source_url_expected` (URL)
+   - `source_url_actual` (URL)
+   - `source_url_matching` (Single select: `yes`/`no`)
+   - `pagination_keys_expected` (Single line text)
+   - `pagination_keys_actual` (Single line text)
+   - `pagination_keys_matching` (Single select: `yes`/`no`)
+   - `entity_count_expected` (Number)
+   - `entity_count_actual` (Number)
+   - `entity_count_difference` (Number)
+   - `analysis_steps` (Link to another record → `analysis_steps` table)
+
+3. **Get credentials:**
+
+   - Create a [Personal Access Token](https://airtable.com/developers/web/api/introduction) with `data.records:read` and `data.records:write` scopes
+   - Grant access to your base
+   - Copy your Base ID from the base URL
+
+4. **Set environment variables:**
+   ```bash
+   export STROT_AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
+   export STROT_AIRTABLE_TOKEN=patXXXXXXXXXXXXXX
+   export STROT_AIRTABLE_OVERVIEW_TABLE=overview
+   export STROT_AIRTABLE_ANALYSIS_STEPS_TABLE=analysis_steps
+   ```
+
+</details>
+
+### Usage
+
+> Make sure the API server is running.
+
+Process evaluation inputs from JSON/JSONL file.
+
+_`evaluations.json`_
+
+```json
+[
+  {
+    "job_id": "existing-job-uuid",
+    "expected_source_url": "https://api.example.com/reviews",
+    "expected_pagination_keys": ["page", "limit"],
+    "expected_entity_count": 243
+  },
+  {
+    "site_url": "https://example.com/product/123",
+    "label": "reviews",
+    "expected_source_url": "https://api.example.com/reviews",
+    "expected_pagination_keys": ["offset"],
+    "expected_entity_count": 100
+  }
+]
+```
+
+```bash
+STROT_AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX STROT_AIRTABLE_TOKEN=patXXXXXXXXXXXXXX \
+    uv run strot-eval from-file evaluations.json
 ```
 
 ## 🆘 Need Help?
