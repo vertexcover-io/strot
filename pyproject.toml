@@ -36,8 +36,10 @@ dependencies = [
 ]
 
 [project.urls]
-
 Repository = "https://github.com/vertexcover-io/strot"
+
+[project.scripts]
+strot-eval = "eval.__main__:app"
 
 [tool.uv]
 dev-dependencies = [
@@ -49,6 +51,13 @@ dev-dependencies = [
     "ruff>=0.6.9",
 ]
 
+[dependency-groups]
+eval = [
+    "cyclopts>=3.22.3",
+    "pyairtable>=3.0.0",
+    "pydantic-settings>=2.10.1",
+]
+
 [build-system]
 requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
@@ -58,6 +67,7 @@ where = ["."]
 include = ["strot*"]
 
 [tool.setuptools]
+py-modules = ["eval"]
 include-package-data = true
 package-data = {"strot" = ["**/*.js", "**/*.jinja"]}
 
