@@ -1,4 +1,3 @@
-import json
 from typing import Any
 
 import httpx
@@ -13,37 +12,51 @@ class Request(BaseModel):
     post_data: dict[str, Any] | str | None = None
 
     @property
-    def parameters(self) -> dict[str, Any]:
-        def _load_value(value: Any) -> Any:
-            if isinstance(value, str):
-                try:
-                    return _load_value(json.loads(value))
-                except (json.JSONDecodeError, ValueError):
-                    return value
-            elif isinstance(value, dict):
-                return {k: _load_value(v) for k, v in value.items()}
-            else:
-                return value
+    def simple_parameters(self) -> dict[str, Any]:
+        result = {}
 
-        if self.method.lower() == "post" and isinstance(self.post_data, dict):
-            return _load_value(self.post_data)
+        from strot.analyzer.utils import is_flat_or_flat_dict, json_load_value
 
-        return _load_value(self.queries)
+        # From queries if it exists
+        if self.queries:
+            loaded_queries = json_load_value(self.queries)
+            for k, v in loaded_queries.items():
+                if is_flat_or_flat_dict(v):
+                    result[k] = v
+
+        # From post_data if it's a dict
+        if isinstance(self.post_data, dict):
+            loaded_post_data = json_load_value(self.post_data)
+            for k, v in loaded_post_data.items():
+                if is_flat_or_flat_dict(v):
+                    result[k] = v
+
+        return result if result else None
 
     def apply_state(self, state: dict[str, Any]) -> "Request":
-        request = self.model_copy()
-        if request.method.lower() == "post" and isinstance(request.post_data, dict):
-            for key, value in state.items():
-                if value is None:
-                    request.post_data.pop(key, None)
-                else:
-                    request.post_data[key] = value
-        else:
-            for key, value in state.items():
+        is_post_data_dict = isinstance(self.post_data, dict)
+        request = Request(
+            method=self.method,
+            url=self.url,
+            queries=self.queries.copy(),
+            headers=self.headers.copy(),
+            post_data=self.post_data.copy() if is_post_data_dict else self.post_data,
+        )
+
+        for key, value in state.items():
+            # Check if key exists in queries
+            if self.queries and key in self.queries:
                 if value is None:
                     request.queries.pop(key, None)
                 else:
                     request.queries[key] = value
+
+            # Check if key exists in post_data (when it's a dict)
+            if is_post_data_dict and key in self.post_data:
+                if value is None:
+                    request.post_data.pop(key, None)
+                else:
+                    request.post_data[key] = value
 
         return request
 
