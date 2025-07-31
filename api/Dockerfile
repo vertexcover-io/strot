@@ -18,9 +18,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy dependency files first for better caching
+# Copy strot package pyproject.toml and install dependencies & browser
 COPY pyproject.toml ./
-COPY api/pyproject.toml ./api/
+RUN uv pip install --no-cache-dir .
+RUN /opt/venv/bin/playwright install chromium-headless-shell
 
 # Copy strot package and install it
 COPY strot/ ./strot/
@@ -28,6 +29,7 @@ RUN uv pip install --no-cache-dir .
 
 # Install API dependencies
 WORKDIR /build/api
+COPY api/pyproject.toml ./
 RUN uv pip install --no-cache-dir .
 
 
@@ -39,17 +41,18 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy browser from builder and install its dependencies
+COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
+RUN /opt/venv/bin/playwright install-deps chromium-headless-shell
+
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-
-# Install playwright chromium headless shell only
-RUN /opt/venv/bin/playwright install --only-shell --with-deps chromium
 
 # Copy application code
 COPY api/ ./api/
