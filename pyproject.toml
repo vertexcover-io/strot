@@ -39,7 +39,7 @@ dependencies = [
 Repository = "https://github.com/vertexcover-io/strot"
 
 [project.scripts]
-strot-eval = "eval.__main__:app"
+stroteval = "eval.__main__:app"
 
 [tool.uv]
 dev-dependencies = [

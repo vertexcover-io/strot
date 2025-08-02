@@ -4,9 +4,8 @@ import boto3
 import httpx
 from botocore.exceptions import ClientError
 
+from eval.settings import env_settings
 from strot.logging import LoggerType, get_logger
-
-from .settings import settings
 
 
 class StrotClient:
@@ -14,17 +13,18 @@ class StrotClient:
 
     def __init__(self, logger: LoggerType | None = None):
         self._logger = logger or get_logger()
-        self._api_client = httpx.AsyncClient(base_url=settings.API_BASE_URL)
+        self._api_client = httpx.AsyncClient(base_url=env_settings.API_BASE_URL)
         self._s3_client = boto3.client(
             "s3",
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION,
-            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+            aws_access_key_id=env_settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=env_settings.AWS_SECRET_ACCESS_KEY,
+            region_name=env_settings.AWS_REGION,
+            endpoint_url=env_settings.AWS_S3_ENDPOINT_URL,
         )
 
     async def create_job(self, target_url: str, label: str) -> str:
         """Create a new job."""
+
         self._logger.info("create-job", url=target_url, label=label, status="pending")
         try:
             response = await self._api_client.post("/v1/jobs", json={"url": target_url, "label": label})
@@ -39,6 +39,7 @@ class StrotClient:
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         """Fetch job details from API"""
+
         self._logger.info("get-job", job_id=job_id, status="pending")
         try:
             response = await self._api_client.get(f"/v1/jobs/{job_id}")
@@ -53,6 +54,7 @@ class StrotClient:
 
     async def fetch_data(self, job_id: str, *, limit: int, offset: int) -> list[dict[str, Any]]:
         """Fetch job data"""
+
         self._logger.info("fetch-data", job_id=job_id, limit=limit, offset=offset, status="pending")
         try:
             response = await self._api_client.get(
@@ -82,7 +84,8 @@ class StrotClient:
 
     def fetch_logs(self, job_id: str) -> str:
         """Fetch job logs."""
-        bucket_name = settings.AWS_S3_LOG_BUCKET
+
+        bucket_name = env_settings.AWS_S3_LOG_BUCKET
         object_key = f"job-{job_id}.log"
 
         self._logger.info("fetch-logs", job_id=job_id, bucket=bucket_name, key=object_key, status="pending")
