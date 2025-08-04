@@ -20,6 +20,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy strot package pyproject.toml and install dependencies & browser
 COPY pyproject.toml ./
+RUN touch README.md
 RUN uv pip install --no-cache-dir .
 RUN /opt/venv/bin/playwright install chromium-headless-shell
 
@@ -30,6 +31,7 @@ RUN uv pip install --no-cache-dir .
 # Install API dependencies
 WORKDIR /build/api
 COPY api/pyproject.toml ./
+RUN touch README.md
 RUN uv pip install --no-cache-dir .
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "strot"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Discover API endpoints with natural language"
 authors = [{ name = "Harsh Verma", email = "harsh@vertexcover.io" }]
 readme = "README.md"
@@ -59,17 +59,29 @@ eval = [
 ]
 
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["strot*"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
-[tool.setuptools]
-py-modules = ["eval"]
-include-package-data = true
-package-data = {"strot" = ["**/*.js", "**/*.jinja"]}
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+fallback-version = "0.0.0.dev0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["strot"]
+
+[tool.hatch.build.targets.wheel.sources]
+"strot" = "strot"
+
+[tool.hatch.build]
+include = [
+  "strot/**/*.py",
+  "strot/**/*.js",
+  "strot/**/*.jinja"
+]
 
 [tool.mypy]
 files = ["strot", "api"]
@@ -85,7 +97,7 @@ show_error_codes = true
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py312"
 line-length = 120
 fix = true
 

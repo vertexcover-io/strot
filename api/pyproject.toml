@@ -1,6 +1,6 @@
 [project]
 name = "strot-api"
-version = "0.0.1"
+dynamic = ["version"]
 description = "API server for strot"
 authors = [{ name = "Harsh Verma", email = "harsh@vertexcover.io" }]
 readme = "README.md"
@@ -27,9 +27,17 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["strot_api*"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+root = ".."
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["strot_api"]
