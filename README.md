@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
 ## 🧪 Evaluation
 
-Test and validate Strot's analysis accuracy across different websites.
+Test and validate Strot's analysis accuracy across different websites. The evaluation system can either evaluate existing analysis jobs or create new jobs and then evaluate them. In both cases, it waits until the job is completed (failed or ready) before performing the evaluation. It compares actual results against expected outcomes, tracking metrics like source URL matching, pagination key detection, and entity count accuracy. Every evaluated job is mapped to their analysis steps and are stored in Airtable.
 
 ### Setup
 
@@ -129,59 +129,48 @@ git clone https://github.com/vertexcover-io/strot.git
 cd strot && uv sync --group eval
 ```
 
-<details>
-<summary>Setup Airtable</summary>
+#### Setup Airtable
 
-1. **Create a new Airtable base** or use an existing one
+1. **Create a new Airtable base:**
 
-2. **Create two tables:**
+   - Go to [Workspaces](https://airtable.com/workspaces)
+   - Click on `Create` button on your desired workspace
+   - Select `Build an app on your own`
+   - Copy the Base ID from the URL (e.g. `appXXXXXXXXXXXXXX`)
 
-   **Table 1: `analysis_steps`**
+2. **Create a Personal Access Token:**
 
-   - `job_id` (Single line text)
-   - `index` (Number)
-   - `step` (Single line text)
-   - `context_before_step_execution` (Attachment)
-   - `step_execution_outcome` (Single line text)
+   - Go to [`/create/tokens`](https://airtable.com/create/tokens)
+   - Add the following scopes:
+     - `data.records:read`
+     - `data.records:write`
+     - `schema.bases:read`
+     - `schema.bases:write`
+   - Give access to the base you created in step 1
+   - Press `Create token` and copy the token (e.g. `patXXXXXXXXXXXXXX`)
 
-   **Table 2: `overview`**
-
-   - `run_id` (Single line text)
-   - `created_at` (Created time)
-   - `target_site` (URL)
-   - `label` (Single line text)
-   - `source_url_expected` (URL)
-   - `source_url_actual` (URL)
-   - `source_url_matching` (Single select: `yes`/`no`)
-   - `pagination_keys_expected` (Single line text)
-   - `pagination_keys_actual` (Single line text)
-   - `pagination_keys_matching` (Single select: `yes`/`no`)
-   - `entity_count_expected` (Number)
-   - `entity_count_actual` (Number)
-   - `entity_count_difference` (Number)
-   - `analysis_steps` (Link to another record → `analysis_steps` table)
-
-3. **Get credentials:**
-
-   - Create a [Personal Access Token](https://airtable.com/developers/web/api/introduction) with `data.records:read` and `data.records:write` scopes
-   - Grant access to your base
-   - Copy your Base ID from the base URL
-
-4. **Set environment variables:**
+3. **Set environment variables:**
    ```bash
    export STROT_AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
    export STROT_AIRTABLE_TOKEN=patXXXXXXXXXXXXXX
-   export STROT_AIRTABLE_OVERVIEW_TABLE=overview
-   export STROT_AIRTABLE_ANALYSIS_STEPS_TABLE=analysis_steps
    ```
 
-</details>
+> **Note**: Required tables are automatically created with proper schema when you run evaluations.
 
 ### Usage
 
-> Make sure the API server is running.
+```
+$ uv run stroteval
+Usage: stroteval [OPTIONS]
 
-Process evaluation inputs from JSON/JSONL file.
+Evaluate multiple (existing or new) jobs from a file or stdin.
+
+╭─ Parameters ──────────────────────────────────────────────────────────────────╮
+│ --file  -f  Path to the JSON/JSONL file. If not provided, reads from stdin.   │
+╰───────────────────────────────────────────────────────────────────────────────╯
+```
+
+Create a file with your desired evaluation inputs
 
 _`evaluations.json`_
 
@@ -189,23 +178,26 @@ _`evaluations.json`_
 [
   {
     "job_id": "existing-job-uuid",
-    "expected_source_url": "https://api.example.com/reviews",
+    "expected_source": "https://api.example.com/reviews",
     "expected_pagination_keys": ["page", "limit"],
     "expected_entity_count": 243
   },
   {
-    "site_url": "https://example.com/product/123",
-    "label": "reviews",
-    "expected_source_url": "https://api.example.com/reviews",
+    "site_url": "https://example.com/category/abc",
+    "label": "products",
+    "expected_source": "https://api.example.com/products",
     "expected_pagination_keys": ["offset"],
     "expected_entity_count": 100
   }
 ]
 ```
 
+Run the evaluation
+
+> Make sure the API server is running & Airtable is configured before running the evaluation.
+
 ```bash
-STROT_AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX STROT_AIRTABLE_TOKEN=patXXXXXXXXXXXXXX \
-    uv run strot-eval from-file evaluations.json
+cat evaluations.json | uv run stroteval
 ```
 
 ## 🆘 Need Help?
