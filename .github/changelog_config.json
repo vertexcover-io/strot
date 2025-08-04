@@ -50,23 +50,23 @@
     "empty_template": "- No changes",
     "label_extractor": [
         {
-            "pattern": "^(feat|feature)(\\(.+\\))?!?:",
+            "pattern": "(?i)^(feat|feature|enhancement)(\\([^)]*\\))?!?:",
             "target": "feature"
         },
         {
-            "pattern": "^(fix|bugfix)(\\(.+\\))?!?:",
+            "pattern": "(?i)^(fix|bugfix)(\\(.+\\))?!?:",
             "target": "bug"
         },
         {
-            "pattern": "^(docs|doc)(\\(.+\\))?!?:",
+            "pattern": "(?i)^(docs|doc)(\\(.+\\))?!?:",
             "target": "documentation"
         },
         {
-            "pattern": "^(chore|refactor|style|test)(\\(.+\\))?!?:",
+            "pattern": "(?i)^(chore|refactor|style|test)(\\(.+\\))?!?:",
             "target": "maintenance"
         },
         {
-            "pattern": "^(perf|performance)(\\(.+\\))?!?:",
+            "pattern": "(?i)^(perf|performance)(\\(.+\\))?!?:",
             "target": "performance"
         }
     ],

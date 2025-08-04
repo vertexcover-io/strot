@@ -76,8 +76,8 @@ Follow [Semantic Versioning](https://semver.org/):
 
 ### Release Workflow Fails
 
-2. **Build Fails**: Check `pyproject.toml` configuration
-3. **PyPI Upload Fails**:
+1. **Build Fails**: Check `pyproject.toml` configuration
+2. **PyPI Upload Fails**:
    - Verify `PYPI_API_TOKEN` secret is set
    - Check if version already exists on PyPI
    - Ensure package name is available
@@ -128,6 +128,6 @@ The automated changelog groups PRs by labels:
 - `security` → 🔒 Security
 - `performance`, `perf` → ⚡ Performance
 - `test`, `testing` → 🧪 Testing
-- `dependencies`, `deps` → 📦 Dependencies
+- `dependency`, `dep` → 📦 Dependencies
 
 Use these labels on PRs for better changelog organization.

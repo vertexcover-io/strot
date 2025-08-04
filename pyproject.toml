@@ -68,7 +68,7 @@ source = "uv-dynamic-versioning"
 [tool.uv-dynamic-versioning]
 vcs = "git"
 style = "pep440"
-fallback-version = "0.0.0"
+fallback-version = "0.0.0.dev0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["strot"]
@@ -97,7 +97,7 @@ show_error_codes = true
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py312"
 line-length = 120
 fix = true
 
