@@ -1,52 +1,216 @@
-<p align="center">Discover API endpoints with natural language</p>
+<p align="center">
+  <strong>Reverse-engineer any website's internal API with natural language</strong>
+</p>
+
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
+  <a href="#"><img src="https://img.shields.io/badge/python-3.10+-brightgreen.svg" alt="Python"></a>
+</p>
 
 ---
 
-## Installation
+## The Problem
+
+Modern websites load data through hidden AJAX calls:
+
+- Data isn't in the HTML - it's fetched via internal APIs
+- You have to manually inspect network requests
+- Complex pagination logic buried in JavaScript
+- APIs change endpoints and parameters frequently
+
+## The Solution
+
+Strot analyzes websites and discovers their internal API calls for you.
+
+**What Strot actually does:**
+
+1. **Analyzes the webpage** to understand what data you want
+2. **Captures the AJAX request** that fetches that data
+3. **Figures out pagination** (limit/offset, cursors, page numbers)
+4. **Generates extraction code** to parse the JSON response
+5. **Returns a Source** that replicates the website's own API calls
+
+## 🐳 Try It Now - No Setup Required!
+
+Get the full Strot experience (Web UI + API) instantly:
+
+```bash
+STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX docker compose \
+    -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
+```
+
+Then visit:
+
+- 🌐 **Web Dashboard**: http://localhost:3000 - Visual interface for analyzing websites
+- 🔌 **REST API**: http://localhost:1337 - Programmatic access
+
+## 🐍 Python Library
+
+### Installation
 
 ```bash
 pip install strot
 ```
 
-## Usage
+Or using `uv`:
+
+```bash
+uv pip install strot
+```
+
+### Example 1: Reverse-Engineer Review API
 
 ```python
 import strot
+import asyncio
 from pydantic import BaseModel
 
-class ReviewSchema(BaseModel):
+class Review(BaseModel):
     title: str | None = None
     username: str | None = None
     rating: float | None = None
     comment: str | None = None
-    location: str | None = None
     date: str | None = None
 
-async def main():
+async def get_reviews():
+    # Strot discovers the internal API that loads reviews
     source = await strot.analyze(
-        url="https://example.com/page-to-analyze",
-        query="All the user reviews for the product.",
-        output_schema=ReviewSchema,
+        url="https://www.getcleanpeople.com/product/fresh-clean-laundry-detergent/",
+        query="Customer reviews with ratings and comments",
+        output_schema=Review
     )
-    async for data in source.generate_data(limit=500, offset=150):
-        # Process data
-        ...
+
+    # Use the same API call the website uses, with your own pagination
+    async for review in source.generate_data(limit=500, offset=100):
+        print(f"{review.rating}⭐ by {review.username}: {review.comment}")
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    asyncio.run(get_reviews())
 ```
 
-### Access it through the API & Web UI
+### Example 2: Capture Product Listing API
 
-Set your Anthropic API key and run with docker-compose:
+```python
+import strot
+import asyncio
+from pydantic import BaseModel
+
+class Product(BaseModel):
+    name: str | None = None
+    price: float | None = None
+    rating: float | None = None
+    availability: str | None = None
+    description: str | None = None
+
+async def get_products():
+    # Strot finds the AJAX endpoint that loads product listings
+    source = await strot.analyze(
+        url="https://blinkit.com/cn/fresh-vegetables/cid/1487/1489",
+        query="Listed products with names and prices.",
+        output_schema=Product
+    )
+
+    # Paginate through all products using the discovered API
+    async for product in source.generate_data(limit=100, offset=0):
+        print(f"{product.name}: ${product.price} ({product.rating}⭐)")
+
+if __name__ == "__main__":
+    asyncio.run(get_products())
+```
+
+## 🧪 Evaluation
+
+Test and validate Strot's analysis accuracy across different websites. The evaluation system can either evaluate existing analysis jobs or create new jobs and then evaluate them. In both cases, it waits until the job is completed (failed or ready) before performing the evaluation. It compares actual results against expected outcomes, tracking metrics like source URL matching, pagination key detection, and entity count accuracy. Every evaluated job is mapped to their analysis steps and are stored in Airtable.
+
+### Setup
 
 ```bash
-export STROT_ANTHROPIC_API_KEY=<YOUR_API_KEY>
-docker-compose up
+git clone https://github.com/vertexcover-io/strot.git
+cd strot && uv sync --group eval
 ```
 
-This will start:
+#### Setup Airtable
 
-- API server on http://localhost:1337
-- Web UI on http://localhost:3000
+1. **Create a new Airtable base:**
+
+   - Go to [Workspaces](https://airtable.com/workspaces)
+   - Click on `Create` button on your desired workspace
+   - Select `Build an app on your own`
+   - Copy the Base ID from the URL (e.g. `appXXXXXXXXXXXXXX`)
+
+2. **Create a Personal Access Token:**
+
+   - Go to [`/create/tokens`](https://airtable.com/create/tokens)
+   - Add the following scopes:
+     - `data.records:read`
+     - `data.records:write`
+     - `schema.bases:read`
+     - `schema.bases:write`
+   - Give access to the base you created in step 1
+   - Press `Create token` and copy the token (e.g. `patXXXXXXXXXXXXXX`)
+
+3. **Set environment variables:**
+   ```bash
+   export STROT_AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
+   export STROT_AIRTABLE_TOKEN=patXXXXXXXXXXXXXX
+   ```
+
+> **Note**: Required tables are automatically created with proper schema when you run evaluations.
+
+### Usage
+
+```
+$ uv run stroteval
+Usage: stroteval [OPTIONS]
+
+Evaluate multiple (existing or new) jobs from a file or stdin.
+
+╭─ Parameters ──────────────────────────────────────────────────────────────────╮
+│ --file  -f  Path to the JSON/JSONL file. If not provided, reads from stdin.   │
+╰───────────────────────────────────────────────────────────────────────────────╯
+```
+
+Create a file with your desired evaluation inputs
+
+_`evaluations.json`_
+
+```json
+[
+  {
+    "job_id": "existing-job-uuid",
+    "expected_source": "https://api.example.com/reviews",
+    "expected_pagination_keys": ["page", "limit"],
+    "expected_entity_count": 243
+  },
+  {
+    "site_url": "https://example.com/category/abc",
+    "label": "products",
+    "expected_source": "https://api.example.com/products",
+    "expected_pagination_keys": ["offset"],
+    "expected_entity_count": 100
+  }
+]
+```
+
+Run the evaluation
+
+> Make sure the API server is running & Airtable is configured before running the evaluation.
+
+```bash
+cat evaluations.json | uv run stroteval
+```
+
+## 🆘 Need Help?
+
+- 💬 [GitHub Discussions](https://github.com/vertexcover-io/strot/discussions) - Ask questions
+- 🐛 [Report Issues](https://github.com/vertexcover-io/strot/issues) - Found a bug?
+
+## 📄 License
+
+MIT License - Use it however you want!
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://vertexcover.io">Vertexcover Labs</a>
+</p>

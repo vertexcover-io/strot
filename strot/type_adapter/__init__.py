@@ -99,7 +99,7 @@ class TypeAdapter(t.Generic[T_Retval]):
         :raises ValidationError: If validation fails
         :return: The validated object
         """
-        obj = extract_python_object(obj, schema=self.__schema, value_type="python")
+        obj = extract_python_object(obj, schema=self.generate_schema(), value_type="python")
         return self.__adapter.validate_python(obj, **kwargs)
 
     def validate_json(self, data: str | bytes | bytearray, **kwargs: t.Any) -> T_Retval:
@@ -111,5 +111,5 @@ class TypeAdapter(t.Generic[T_Retval]):
         :raises ValidationError: If validation fails
         :return: The validated object
         """
-        obj = extract_python_object(data, schema=self.__schema, value_type="json")
+        obj = extract_python_object(data, schema=self.generate_schema(), value_type="json")
         return self.__adapter.validate_python(obj, **kwargs)

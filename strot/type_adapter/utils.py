@@ -120,7 +120,7 @@ def transform_to_fc_schema(id: str, schema: dict[str, t.Any], params_key: str) -
     return {"name": id, **description_dict, params_key: schema}
 
 
-def extract_python_object(__value: t.Any, schema: dict[str, str], value_type: t.Literal["json", "python"]) -> t.Any:
+def extract_python_object(__value: t.Any, schema: dict[str, t.Any], value_type: t.Literal["json", "python"]) -> t.Any:
     """
     Extract python value descriptor's validator is expecting.
     """

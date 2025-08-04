@@ -30,6 +30,7 @@ s3_handler_config = handlers.S3HandlerConfig(
     boto3_session=boto3_session,
     bucket_name=settings.AWS_S3_LOG_BUCKET,
     endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+    flush_interval=15,
 )
 
 
@@ -199,6 +200,34 @@ async def get_job(
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Check if pending job has timed out (no log activity for 60 seconds)
+    if job.status == "pending":
+        current_time = datetime.now(timezone.utc)
+        time_since_initiation = (current_time - job.initiated_at).total_seconds()
+
+        # Only check for timeout after job has been running for at least 60 seconds
+        if time_since_initiation > 60:
+            try:
+                # Check if logs exist in S3 and get last modified time
+                s3_client = boto3_session.client("s3", endpoint_url=settings.AWS_S3_ENDPOINT_URL)
+
+                response = s3_client.head_object(Bucket=settings.AWS_S3_LOG_BUCKET, Key=f"job-{job_id!s}.log")
+
+                last_modified = response["LastModified"].replace(tzinfo=timezone.utc)
+                time_since_last_log = (current_time - last_modified).total_seconds()
+
+                # If no log activity for 60 seconds, mark as failed
+                if time_since_last_log > 60:
+                    job.status = "failed"
+                    job.error = "Job timed out - no log activity detected for over 60 seconds"
+                    job.completed_at = current_time
+                    await db.commit()
+                    await db.refresh(job)
+
+            except Exception:  # noqa: S110
+                # If S3 check fails, silently continue (don't fail the request)
+                pass
 
     result = None
     label_name = job.label.name
