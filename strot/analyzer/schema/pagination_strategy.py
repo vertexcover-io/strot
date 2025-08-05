@@ -1,11 +1,11 @@
+from collections.abc import Callable
 from json import dumps as json_dumps
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
-from httpx import HTTPStatusError
 from pydantic import BaseModel, PrivateAttr
 
 from strot.analyzer.schema import Pattern
-from strot.analyzer.schema.request import Request
+from strot.analyzer.schema.request import Request, RequestException
 from strot.analyzer.utils import LimitOffsetTracker, generate_patterns
 
 __all__ = ("PaginationStrategy", "PageInfo", "PageOffsetInfo", "LimitOffsetInfo", "StringCursorInfo", "MapCursorInfo")
@@ -53,11 +53,11 @@ class PageInfo(PaginationStrategy):
             state[self.page_key] = "1"
 
             try:
-                response = (await request.apply_state(state).make()).text
-            except HTTPStatusError as e:
-                if e.response.status_code == 400:
+                response = await (await request.make(state=state)).text()
+            except RequestException as e:
+                if e.status_code == 400:
                     state[self.limit_key] = str(actual_limit)
-                    response = (await request.apply_state(state).make()).text
+                    response = await (await request.make(state=state)).text()
                 else:
                     raise
 
@@ -99,7 +99,7 @@ class PageInfo(PaginationStrategy):
         last_response = None
         for page in range(start_page, end_page + 1):
             state[self.page_key] = str(page)
-            response = (await request.apply_state(state).make()).text
+            response = await (await request.make(state=state)).text()
             if response == last_response:
                 break
             last_response = response
@@ -142,7 +142,7 @@ class PageOffsetInfo(PaginationStrategy):
                 self.page_key: str(page),
                 self.offset_key: str(self.base_offset * page),
             }
-            response = (await request.apply_state(state).make()).text
+            response = await (await request.make(state=state)).text()
             if response == last_response:
                 break
             last_response = response
@@ -180,11 +180,11 @@ class LimitOffsetInfo(PaginationStrategy):
         last_response = None
         while tracker.remaining_items > 0:
             try:
-                response = (await request.apply_state(state).make()).text
-            except HTTPStatusError as e:
-                if e.response.status_code == 400 and first_request:
+                response = await (await request.make(state=state)).text()
+            except RequestException as e:
+                if e.status_code == 400 and first_request:
                     state[self.limit_key] = str(default_limit)
-                    response = (await request.apply_state(state).make()).text
+                    response = await (await request.make(state=state)).text()
                 else:
                     raise
             if response == last_response:
@@ -237,11 +237,11 @@ class BaseCursorInfo(PaginationStrategy, Generic[CursorT]):
         last_response = None
         while tracker.remaining_items > 0:
             try:
-                response = (await request.apply_state(state).make()).text
-            except HTTPStatusError as e:
-                if e.response.status_code == 400 and self.limit_key and first_request:
+                response = await (await request.make(state=state)).text()
+            except RequestException as e:
+                if e.status_code == 400 and self.limit_key and first_request:
                     state[self.limit_key] = str(default_limit)
-                    response = (await request.apply_state(state).make()).text
+                    response = await (await request.make(state=state)).text()
                 else:
                     raise
             if response == last_response:
