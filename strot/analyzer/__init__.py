@@ -2,9 +2,10 @@ import asyncio
 import contextlib
 import io
 import os
+from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
 from json import dumps as json_dumps
-from typing import Any, Callable, Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import parse_qsl, urlparse
 
 from playwright.async_api import Browser, Page, async_playwright
@@ -416,11 +417,14 @@ class _AnalyzerContext:
         output_schema: type[BaseModel],
         max_steps: int = 30,
     ) -> Source | None:
+        last_response = None
         pagination_keys = prompts.schema.PaginationKeys()
+        strategy = None
         for step in range(1, max_steps + 1):
             try:
                 self._logger.info("analysis", action="run-step", step_count=step, status="pending")
                 response = await self.run_step(query)
+                last_response = response
             except Exception as e:
                 self._logger.info("analysis", action="run-step", step_count=step, status="failed", reason=e)
                 response = None
@@ -450,39 +454,7 @@ class _AnalyzerContext:
                 request_parameters=request_parameters,
                 status="pending",
             )
-            if request_parameters:
-                if not pagination_keys.strategy_available():
-                    pagination_keys = await self.detect_pagination_keys(request_parameters)
-
-                strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
-                if strategy is None:
-                    self._logger.info(
-                        "analysis",
-                        action="detect-pagination",
-                        request_parameters=request_parameters,
-                        status="failed",
-                        reason="No pagination strategy detected. Trying again after collecting new responses.",
-                    )
-                    continue
-
-                if isinstance(strategy, (pagination_strategy.StringCursorInfo, pagination_strategy.MapCursorInfo)):
-                    log_kwargs = {
-                        "cursor_key": strategy.cursor_key,
-                        "limit_key": strategy.limit_key,
-                        "default_cursor": strategy.default_cursor,
-                    }
-                else:
-                    log_kwargs = strategy.model_dump()
-
-                self._logger.info(
-                    "analysis",
-                    action="detect-pagination",
-                    request_parameters=request_parameters,
-                    status="success",
-                    strategy=strategy.name,
-                    **log_kwargs,
-                )
-            else:
+            if not request_parameters:
                 self._logger.info(
                     "analysis",
                     action="detect-pagination",
@@ -490,24 +462,61 @@ class _AnalyzerContext:
                     status="failed",
                     reason="No pagination compatible parameters detected.",
                 )
+                continue
 
-            self._logger.info("analysis", action="code-generation", status="pending")
-            code, default_limit = await self.get_extraction_code_and_default_limit(output_schema, response.value)
-            if not code:
+            if not pagination_keys.strategy_available():
+                pagination_keys = await self.detect_pagination_keys(request_parameters)
+
+            strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
+            if strategy is None:
                 self._logger.info(
-                    "analysis", action="code-generation", status="failed", reason="LLM failed to generate code."
+                    "analysis",
+                    action="detect-pagination",
+                    request_parameters=request_parameters,
+                    status="failed",
+                    reason="No pagination strategy detected. Trying again after collecting new responses.",
                 )
+                continue
+
+            if isinstance(strategy, pagination_strategy.StringCursorInfo | pagination_strategy.MapCursorInfo):
+                log_kwargs = {
+                    "cursor_key": strategy.cursor_key,
+                    "limit_key": strategy.limit_key,
+                    "default_cursor": strategy.default_cursor,
+                }
             else:
-                self._logger.info("analysis", action="code-generation", status="success", code=code)
+                log_kwargs = strategy.model_dump()
 
-            # Filter out headers to ignore
-            for key in list(response.request.headers):
-                if key.lstrip(":").lower() in HEADERS_TO_IGNORE:
-                    response.request.headers.pop(key)
-
-            return Source(
-                request=response.request,
-                pagination_strategy=strategy,
-                extraction_code=code,
-                default_limit=default_limit or 1,
+            self._logger.info(
+                "analysis",
+                action="detect-pagination",
+                request_parameters=request_parameters,
+                status="success",
+                strategy=strategy.name,
+                **log_kwargs,
             )
+            break
+
+        if not last_response:
+            return None
+
+        self._logger.info("analysis", action="code-generation", status="pending")
+        code, default_limit = await self.get_extraction_code_and_default_limit(output_schema, last_response.value)
+        if not code:
+            self._logger.info(
+                "analysis", action="code-generation", status="failed", reason="LLM failed to generate code."
+            )
+        else:
+            self._logger.info("analysis", action="code-generation", status="success", code=code)
+
+        # Filter out headers to ignore
+        for key in list(last_response.request.headers):
+            if key.lstrip(":").lower() in HEADERS_TO_IGNORE:
+                last_response.request.headers.pop(key)
+
+        return Source(
+            request=last_response.request,
+            pagination_strategy=strategy,
+            extraction_code=code,
+            default_limit=default_limit or 1,
+        )
