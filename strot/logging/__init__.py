@@ -133,7 +133,7 @@ class UnstructuredLoggingFormatter(logging.Formatter):
                 message_parts.append(f"{v.__class__.__name__}: {v!s}")
             elif isinstance(v, float):
                 message_parts.append(f"{k}={v:.2f}")
-            elif "\n" in v:
+            elif isinstance(v, str) and "\n" in v:
                 message_parts.append(f"{k}='''\n{v.strip("\n")}\n'''")
             else:
                 message_parts.append(f"{k}={v!r}")
