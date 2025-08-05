@@ -1,6 +1,6 @@
 [project]
 name = "strot-api"
-dynamic = ["version"]
+version = "0.1.0"
 description = "API server for strot"
 authors = [{ name = "Harsh Verma", email = "harsh@vertexcover.io" }]
 readme = "README.md"
@@ -27,17 +27,8 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling", "uv-dynamic-versioning"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.version]
-source = "uv-dynamic-versioning"
-
-[tool.uv-dynamic-versioning]
-vcs = "git"
-style = "pep440"
-root = ".."
-fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["strot_api"]

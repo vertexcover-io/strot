@@ -84,7 +84,7 @@ include = [
 ]
 
 [tool.mypy]
-files = ["strot", "api"]
+files = ["strot", "api", "eval"]
 disallow_untyped_defs = true
 disallow_any_unimported = true
 no_implicit_optional = true
