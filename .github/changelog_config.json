@@ -50,24 +50,29 @@
     "empty_template": "- No changes",
     "label_extractor": [
         {
-            "pattern": "(?i)^(feat|feature|enhancement)(\\([^)]*\\))?!?:",
-            "target": "feature"
+            "pattern": "^(feat|feature|enhancement)(\\([^)]*\\))?!?:",
+            "target": "feature",
+            "flags": "i"
         },
         {
-            "pattern": "(?i)^(fix|bugfix)(\\(.+\\))?!?:",
-            "target": "bug"
+            "pattern": "^(fix|bugfix)(\\(.+\\))?!?:",
+            "target": "bug",
+            "flags": "i"
         },
         {
-            "pattern": "(?i)^(docs|doc)(\\(.+\\))?!?:",
-            "target": "documentation"
+            "pattern": "^(docs|doc)(\\(.+\\))?!?:",
+            "target": "documentation",
+            "flags": "i"
         },
         {
-            "pattern": "(?i)^(chore|refactor|style|test)(\\(.+\\))?!?:",
-            "target": "maintenance"
+            "pattern": "^(chore|refactor|style|test)(\\(.+\\))?!?:",
+            "target": "maintenance",
+            "flags": "i"
         },
         {
-            "pattern": "(?i)^(perf|performance)(\\(.+\\))?!?:",
-            "target": "performance"
+            "pattern": "^(perf|performance)(\\(.+\\))?!?:",
+            "target": "performance",
+            "flags": "i"
         }
     ],
     "max_tags_to_fetch": 200,
