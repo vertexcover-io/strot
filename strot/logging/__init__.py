@@ -123,7 +123,7 @@ class UnstructuredLoggingFormatter(logging.Formatter):
         except json.JSONDecodeError:
             data = {"message": record.getMessage()}
 
-        message_parts = [data.pop("level", record.levelname).upper(), f"event={data.pop('event', 'unknown')!r}"]
+        message_parts = [data.pop("level", record.levelname).upper(), f"event={data.pop("event", "unknown")!r}"]
         for k, v in data.items():
             if v is None:
                 continue
@@ -133,6 +133,8 @@ class UnstructuredLoggingFormatter(logging.Formatter):
                 message_parts.append(f"{v.__class__.__name__}: {v!s}")
             elif isinstance(v, float):
                 message_parts.append(f"{k}={v:.2f}")
+            elif "\n" in v:
+                message_parts.append(f"{k}='''\n{v.strip("\n")}\n'''")
             else:
                 message_parts.append(f"{k}={v!r}")
 
