@@ -56,7 +56,9 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          git stash push -m "temp changelog changes"
           git checkout main
+          git stash pop
           git add CHANGELOG.md
           git commit -m "chore: update CHANGELOG.md for ${{ github.ref_name }}" || exit 0
           git push origin main
