@@ -55,6 +55,6 @@ class Source(BaseModel):
             ):
                 yield data
         else:
-            data = self.extract_data((await self.request.make()).text)
+            data = self.extract_data(await (await self.request.make()).text())
             if slice_data := tracker.slice(data):
                 yield slice_data

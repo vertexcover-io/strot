@@ -1,7 +1,14 @@
 from typing import Any
 
-import httpx
-from pydantic import BaseModel
+import rnet
+from pydantic import BaseModel, PrivateAttr
+
+
+class RequestException(Exception):
+    def __init__(self, status_code: int, message: str) -> None:
+        self.status_code = status_code
+        self.message = message
+        super().__init__(message)
 
 
 class Request(BaseModel):
@@ -10,6 +17,8 @@ class Request(BaseModel):
     queries: dict[str, str]
     headers: dict[str, str]
     post_data: dict[str, Any] | str | None = None
+
+    _client: rnet.Client | None = PrivateAttr(default=None)
 
     @property
     def simple_parameters(self) -> dict[str, Any]:
@@ -33,7 +42,7 @@ class Request(BaseModel):
 
         return result if result else None
 
-    def apply_state(self, state: dict[str, Any]) -> "Request":
+    def _apply_state(self, state: dict[str, Any]) -> "Request":
         is_post_data_dict = isinstance(self.post_data, dict)
         request = Request(
             method=self.method,
@@ -60,14 +69,38 @@ class Request(BaseModel):
 
         return request
 
-    async def make(self, timeout: float | None = None) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(
-                self.method,
-                self.url,
-                params=self.queries,
-                headers=self.headers,
-                data=self.post_data,
-            )
-            response.raise_for_status()
-            return response
+    async def make(
+        self,
+        *,
+        state: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> rnet.Response:
+        if self._client is None:
+            self._client = rnet.Client(impersonate=rnet.Impersonate.Chrome130)
+
+        request = self
+        if state is not None:
+            request = self._apply_state(state)
+
+        request_kwargs = {
+            "method": getattr(rnet.Method, request.method.upper()),
+            "url": request.url,
+        }
+        if request.queries:
+            request_kwargs["query"] = list(request.queries.items())
+        if request.headers:
+            request_kwargs["headers"] = request.headers
+
+        if timeout is not None:
+            request_kwargs["timeout"] = int(timeout)
+
+        if request.post_data is not None:
+            if isinstance(request.post_data, dict):
+                request_kwargs["json"] = request.post_data
+            else:
+                request_kwargs["body"] = request.post_data
+
+        response = await self._client.request(**request_kwargs)
+        if response.status != 200:
+            raise RequestException(response.status, f"Request failed with status code: {response.status}")
+        return response
