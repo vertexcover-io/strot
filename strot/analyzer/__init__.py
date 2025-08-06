@@ -8,8 +8,8 @@ from json import dumps as json_dumps
 from typing import Any, Literal, cast
 from urllib.parse import parse_qsl, urlparse
 
-from playwright.async_api import Browser, Page, async_playwright
-from playwright.async_api import Response as PageResponse
+from patchright.async_api import Browser, Page, async_playwright
+from patchright.async_api import Response as PageResponse
 from pydantic import BaseModel
 
 from strot import llm

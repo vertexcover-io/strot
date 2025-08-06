@@ -22,7 +22,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY pyproject.toml ./
 RUN touch README.md
 RUN uv pip install --no-cache-dir .
-RUN /opt/venv/bin/playwright install chromium-headless-shell
+RUN /opt/venv/bin/patchright install chromium-headless-shell
 
 # Copy strot package and install it
 COPY strot/ ./strot/
@@ -48,7 +48,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copy browser from builder and install its dependencies
 COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
-RUN /opt/venv/bin/playwright install-deps chromium-headless-shell
+RUN /opt/venv/bin/patchright install-deps chromium-headless-shell
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
