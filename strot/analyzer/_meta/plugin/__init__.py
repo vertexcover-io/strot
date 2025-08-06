@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from playwright.async_api import Page
+from patchright.async_api import Page
 
 from strot.analyzer.schema import Point
 from strot.analyzer.utils import text_match_ratio
@@ -16,11 +16,14 @@ class Plugin:
         self._page = page
 
     async def evaluate(self, expr: str, args=None) -> bool:
-        if not await self._page.evaluate("() => window.strotPluginInjected === true"):
+        if not await self._page.evaluate(
+            "() => window.strotPluginInjected === true",
+            isolated_context=False,
+        ):
             _ = await self._page.add_script_tag(path=Path(__file__).parent / "inject.js")
 
         await self._page.wait_for_load_state("domcontentloaded")
-        result = await self._page.evaluate(expr, args)
+        result = await self._page.evaluate(expr, args, isolated_context=False)
         await self._page.wait_for_load_state("domcontentloaded")
         return result
 
@@ -28,8 +31,8 @@ class Plugin:
         selectors = await self.evaluate(
             """
             () => {
-                const elements = getElementsInView(getElementsInDOM());
-                return elements.map(elem => generateCSSSelector(elem));
+                const elements = window.getElementsInView(window.getElementsInDOM());
+                return elements.map(element => window.generateCSSSelector(element));
             }
             """
         )
@@ -47,16 +50,16 @@ class Plugin:
         return len(added) > 0 or len(removed) > 0
 
     async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
-        return await self.evaluate("([direction]) => scrollToNextView({ direction })", [direction])
+        return await self.evaluate("([direction]) => window.scrollToNextView({ direction })", [direction])
 
     async def get_last_similar_element(self, text_sections: list[str]) -> str | None:
         texts_in_view_to_last_sibling_selectors: dict[str, str] = await self.evaluate(
             """
             () => {
                 const textsInViewToLastSiblingSelector = {};
-                const mapping = mapLastVisibleSiblings(1.25);
+                const mapping = window.mapLastVisibleSiblings(1.25);
                 mapping.forEach((lastSiblingElement, elementInView) => {
-                    textsInViewToLastSiblingSelector[elementInView.textContent.trim()] = generateCSSSelector(lastSiblingElement);
+                    textsInViewToLastSiblingSelector[elementInView.textContent.trim()] = window.generateCSSSelector(lastSiblingElement);
                 });
                 return textsInViewToLastSiblingSelector;
             }
