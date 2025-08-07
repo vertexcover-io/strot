@@ -6,7 +6,7 @@ FastAPI server for the Strot web scraping and API discovery service.
 
 - Job management for web scraping tasks
 - Label management for organizing jobs
-- Browser automation with Playwright
+- Browser automation with Patchright
 - PostgreSQL database with SQLAlchemy
 - S3-compatible object storage for logs
 - Automatic database migrations with Alembic
@@ -19,6 +19,7 @@ Required:
 
 Optional (with defaults):
 
+- `STROT_BROWSER_WS_URL` - Browser WebSocket URL (default: ws://localhost:5678/patchright)
 - `STROT_POSTGRES_HOST` - Database host (default: localhost)
 - `STROT_POSTGRES_USER` - Database user (default: strot-user)
 - `STROT_POSTGRES_PASSWORD` - Database password (default: secretpassword)

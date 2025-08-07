@@ -86,6 +86,7 @@ services:
     environment:
       - STROT_POSTGRES_HOST=postgres
       - STROT_AWS_S3_ENDPOINT_URL=http://minio:9000
+      - STROT_BROWSER_WS_URL=${STROT_BROWSER_WS_URL:-ws://localhost:5678/patchright}
       - STROT_ANTHROPIC_API_KEY=${STROT_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY}}
     depends_on:
       postgres:

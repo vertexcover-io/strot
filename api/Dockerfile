@@ -18,14 +18,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy strot package pyproject.toml and install dependencies & browser
+# Install strot package and its dependencies
+COPY strot/ ./strot/
 COPY pyproject.toml ./
 RUN touch README.md
-RUN uv pip install --no-cache-dir .
-RUN /opt/venv/bin/patchright install chromium-headless-shell
-
-# Copy strot package and install it
-COPY strot/ ./strot/
 RUN uv pip install --no-cache-dir .
 
 # Install API dependencies
@@ -45,10 +41,6 @@ WORKDIR /app
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
-
-# Copy browser from builder and install its dependencies
-COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
-RUN /opt/venv/bin/patchright install-deps chromium-headless-shell
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
