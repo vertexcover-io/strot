@@ -34,9 +34,19 @@ Strot analyzes websites and discovers their internal API calls for you.
 
 Get the full Strot experience (Web UI + API) instantly:
 
+Using [Patchright](https://github.com/synacktra/patchright-headless-server) browser
+
 ```bash
-STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX docker compose \
-    -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
+docker run -p 5678:5678 synacktra/patchright-headless-server
+STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX \
+  docker compose -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
+```
+
+Or, using [Steel](https://steel.dev/) browser
+
+```bash
+STROT_BROWSER_WS_URL=wss://connect.steel.dev?apiKey=ste-XXXXXX STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX \
+  docker compose -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
 ```
 
 Then visit:

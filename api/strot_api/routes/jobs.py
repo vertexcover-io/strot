@@ -1,11 +1,11 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import boto3
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from json_schema_to_pydantic import create_model
-from playwright.async_api import Browser
+from patchright.async_api import Browser
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy import func, select
 
@@ -101,7 +101,7 @@ async def create_job(
         url=str(request.url),
         label_id=label.id,
         status="pending",
-        initiated_at=datetime.now(timezone.utc),
+        initiated_at=datetime.now(UTC),
     )
 
     db.add(job)
@@ -203,7 +203,7 @@ async def get_job(
 
     # Check if pending job has timed out (no log activity for 60 seconds)
     if job.status == "pending":
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
         time_since_initiation = (current_time - job.initiated_at).total_seconds()
 
         # Only check for timeout after job has been running for at least 60 seconds
@@ -214,7 +214,7 @@ async def get_job(
 
                 response = s3_client.head_object(Bucket=settings.AWS_S3_LOG_BUCKET, Key=f"job-{job_id!s}.log")
 
-                last_modified = response["LastModified"].replace(tzinfo=timezone.utc)
+                last_modified = response["LastModified"].replace(tzinfo=UTC)
                 time_since_last_log = (current_time - last_modified).total_seconds()
 
                 # If no log activity for 60 seconds, mark as failed
@@ -245,7 +245,7 @@ async def get_job(
             result["error"] = f"Source request failed: {e}"
 
         job.usage_count += 1
-        job.last_used_at = datetime.now(timezone.utc)
+        job.last_used_at = datetime.now(UTC)
         await db.commit()
         await db.refresh(job)
 
@@ -304,7 +304,7 @@ async def process_job_request(
         if not (job := result.scalar_one_or_none()):
             return
 
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
 
         if source is not None:
             job.source = source.model_dump()

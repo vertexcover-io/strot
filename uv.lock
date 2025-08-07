@@ -1505,7 +1505,7 @@ wheels = [
 
 [[package]]
 name = "strot"
-version = "0.1.4.post1.dev0+834df90"
+version = "0.1.4.post2.dev0+53db1e1"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },

@@ -1,5 +1,3 @@
-from typing import Literal
-
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
@@ -7,7 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     model_config = {"env_prefix": "STROT_"}
 
-    BROWSER_TYPE: Literal["headless", "headed"] = "headless"
+    BROWSER_WS_URL: str = "ws://localhost:5678/patchright"
 
     POSTGRES_USER: str = "strot-user"
     POSTGRES_PASSWORD: str = "secretpassword"

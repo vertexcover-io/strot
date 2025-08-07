@@ -5,7 +5,7 @@ from botocore.errorfactory import ClientError
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from strot.analyzer import create_browser
+from strot import launch_browser
 from strot_api.database import sessionmanager
 from strot_api.routes import jobs, labels
 from strot_api.settings import settings
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
     async with (
         sessionmanager,
-        create_browser(settings.BROWSER_TYPE) as browser,
+        launch_browser(settings.BROWSER_WS_URL) as browser,
     ):
         app.state.browser = browser
         yield
