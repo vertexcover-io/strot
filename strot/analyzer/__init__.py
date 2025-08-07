@@ -3,13 +3,12 @@ import contextlib
 import io
 import os
 from collections.abc import Callable
-from contextlib import asynccontextmanager, suppress
 from json import dumps as json_dumps
-from typing import Any, Literal, cast
+from typing import Any, cast
 from urllib.parse import parse_qsl, urlparse
 
-from patchright.async_api import Browser, Page, async_playwright
-from patchright.async_api import Response as PageResponse
+from patchright.async_api import Browser, Page
+from patchright.async_api import Response as InterceptedResponse
 from pydantic import BaseModel
 
 from strot import llm
@@ -19,16 +18,16 @@ from strot.analyzer.schema import Point, Response, pagination_strategy
 from strot.analyzer.schema.request import Request
 from strot.analyzer.schema.source import Source
 from strot.analyzer.utils import draw_point_on_image, encode_image, parse_python_code, text_match_ratio
+from strot.browser import launch_browser
 from strot.logging import LoggerType, get_logger, setup_logging
 from strot.type_adapter import TypeAdapter
 
-__all__ = ("analyze", "create_browser")
+__all__ = ("analyze",)
 
 setup_logging()
 
 EXCLUDE_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "collect"}
 """URL filtering keywords"""
-
 
 HEADERS_TO_IGNORE = {
     "accept-encoding",
@@ -43,33 +42,13 @@ HEADERS_TO_IGNORE = {
 }
 
 
-@asynccontextmanager
-async def create_browser(mode: Literal["headed", "headless"]):
-    """
-    Create a browser instance that will be automatically closed.
-
-    Args:
-        mode: browser mode to use. Can be "headed" or "headless".
-
-    Yields:
-        A browser instance.
-    """
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=mode == "headless")
-        try:
-            yield browser
-        finally:
-            with suppress(Exception):
-                await browser.close()
-
-
 async def analyze(
     *,
     url: str,
     query: str,
     output_schema: type[BaseModel],
     max_steps: int = 30,
-    browser: Browser | Literal["headless", "headed"] = "headed",
+    browser: Browser | None = None,
     logger: LoggerType | None = None,
     page_load_timeout: float | None = None,
 ) -> Source | None:
@@ -85,8 +64,7 @@ async def analyze(
         logger: The logger to use.
         page_load_timeout: The timeout for waiting for the page to load.
     """
-    if logger is None:
-        logger = get_logger()
+    logger = logger or get_logger()
 
     async def run(browser: Browser):
         browser_ctx = await browser.new_context(bypass_csp=True)
@@ -117,9 +95,9 @@ async def analyze(
         finally:
             await browser_ctx.close()
 
-    if isinstance(browser, str):
-        async with create_browser(browser) as browser:
-            return await run(browser)
+    if browser is None:
+        async with launch_browser("headed") as browser_instance:
+            return await run(browser_instance)
 
     return await run(browser)
 
@@ -148,11 +126,13 @@ class _AnalyzerContext:
         self._page.on("response", self.response_handler)
 
     async def load_url(self, url: str, load_timeout: float | None) -> None:
-        await self._page.goto(url, timeout=load_timeout, wait_until="commit")
+        await self._page.set_viewport_size({"width": 1280, "height": 800})
+        with contextlib.suppress(Exception):
+            await self._page.goto(url, timeout=load_timeout, wait_until="domcontentloaded")
         await self._page.wait_for_timeout(5000)
         self._ignore_js_files = False
 
-    async def response_handler(self, response: PageResponse) -> None:
+    async def response_handler(self, response: InterceptedResponse) -> None:
         rsc_type = response.request.resource_type
         if rsc_type not in ("xhr", "fetch"):
             return

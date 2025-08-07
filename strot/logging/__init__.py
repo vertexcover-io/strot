@@ -54,7 +54,7 @@ def setup_logging(
         _level = level
 
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(UnstructuredLoggingFormatter())
+    console_handler.setFormatter(ConsoleFormatter())
 
     logging.basicConfig(
         level=_level.value,
@@ -116,7 +116,7 @@ def get_logger(name: str | None = None, /, *handler_config: BaseHandlerConfig, *
     return logger
 
 
-class UnstructuredLoggingFormatter(logging.Formatter):
+class ConsoleFormatter(logging.Formatter):
     def format(self, record):
         try:
             data = json.loads(record.getMessage())
