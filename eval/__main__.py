@@ -57,8 +57,12 @@ async def run(
 
     evaluator = Evaluator()
     for i, input_obj in enumerate(inputs, 1):
-        job_type = "new job" if isinstance(input_obj, NewJobInput) else "existing job"
-        identifier = getattr(input_obj, "site_url", input_obj.job_id)
+        if isinstance(input_obj, NewJobInput):
+            job_type = "new job"
+            identifier = input_obj.site_url
+        else:
+            job_type = "existing job"
+            identifier = input_obj.job_id
 
         print(f"🔄 [{i}/{len(inputs)}] Processing {job_type}: {identifier}")
 
