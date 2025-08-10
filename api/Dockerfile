@@ -3,8 +3,6 @@ FROM python:3.12-slim AS builder
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-WORKDIR /build
-
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -18,16 +16,20 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install strot package and its dependencies
-COPY strot/ ./strot/
-COPY pyproject.toml ./
-RUN touch README.md
-RUN uv pip install --no-cache-dir .
-
 # Install API dependencies
 WORKDIR /build/api
 COPY api/pyproject.toml ./
 RUN touch README.md
+RUN uv pip install --no-cache-dir .
+
+# Install strot's dependencies
+WORKDIR /build
+COPY pyproject.toml ./
+RUN touch README.md
+RUN uv pip install --no-cache-dir .
+
+# Install strot package
+COPY strot/ ./strot/
 RUN uv pip install --no-cache-dir .
 
 
@@ -37,16 +39,16 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
-WORKDIR /app
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
 # Copy application code
 COPY api/ ./api/
