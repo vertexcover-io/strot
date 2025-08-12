@@ -3,19 +3,13 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, PrivateAttr
 
-from strot.analyzer.schema.pagination_strategy import (
-    LimitOffsetInfo,
-    MapCursorInfo,
-    PageInfo,
-    PageOffsetInfo,
-    StringCursorInfo,
-)
+from strot.analyzer.schema.pagination_strategy import CursorInfo, IndexInfo
 from strot.analyzer.schema.request import Request
 from strot.analyzer.utils import LimitOffsetTracker
 
 __all__ = ("Source",)
 
-StrategyT = TypeVar("StrategyT", PageInfo, PageOffsetInfo, LimitOffsetInfo, StringCursorInfo, MapCursorInfo)
+StrategyT = TypeVar("StrategyT", IndexInfo, CursorInfo)
 
 
 class Source(BaseModel):
