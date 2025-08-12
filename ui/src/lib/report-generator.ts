@@ -23,8 +23,8 @@ export interface LogEvent {
   queries?: Record<string, unknown>;
   data?: unknown;
   code?: string;
-  strategy?: string;
-  request_parameters?: Record<string, unknown>;
+  strategy?: { name: string; info: Record<string, unknown> };
+  potential_pagination_parameters?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -41,11 +41,10 @@ export interface AnalysisStep {
 
 export interface PaginationDetection {
   status?: string;
-  request_parameters?: Record<string, unknown>;
-  strategy?: string;
+  potential_pagination_parameters?: Record<string, unknown>;
+  strategy?: { name: string; info: Record<string, unknown> };
   llm_calls: LogEvent[];
   reason?: string;
-  [key: string]: unknown;
 }
 
 export interface CodeGeneration {
@@ -161,8 +160,9 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         if (status === "pending") {
           current_pagination = {
             status: "pending",
-            request_parameters: event.request_parameters,
-            strategy: "",
+            potential_pagination_parameters:
+              event.potential_pagination_parameters,
+            strategy: undefined,
             llm_calls: [],
           };
         } else if (status === "success" || status === "failed") {

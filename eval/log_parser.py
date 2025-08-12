@@ -30,7 +30,7 @@ class LogEvent:
     data: Any | None = None
     code: str | None = None
     strategy: str | None = None
-    request_parameters: dict[str, Any] | None = None
+    potential_pagination_parameters: dict[str, Any] | None = None
 
 
 @dataclass

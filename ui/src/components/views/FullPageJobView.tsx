@@ -435,7 +435,7 @@ export function FullPageJobView({
                       title="Source Information"
                       theme="light"
                       maxHeight="max-h-128"
-                      showCopy={false}
+                      showCopy={true}
                     >
                       {JSON.stringify(jobData.source, null, 2)}
                     </CodeBlock>

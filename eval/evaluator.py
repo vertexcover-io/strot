@@ -170,7 +170,7 @@ class Evaluator:
             elif step.status == "success":
                 outcome = f"Request matched: {step.method} {step.url}"
             else:
-                outcome = f"Status: {step.status or 'unknown'}"
+                outcome = f"Status: {step.status or "unknown"}"
 
             # Process each sub-event that has a step
             for event in step.sub_events:
@@ -202,7 +202,7 @@ class Evaluator:
         self._logger.info("get-analysis-steps", job_id=job_id, status="pending")
         try:
             records = self._analysis_steps_table.all(
-                formula=f"{{{AnalysisStepsAirtableSchema.job_id['name']}}} = '{job_id}'",
+                formula=f"{{{AnalysisStepsAirtableSchema.job_id["name"]}}} = '{job_id}'",
                 sort=[AnalysisStepsAirtableSchema.index["name"]],  # Sort by index for proper order
             )
             self._logger.info("get-analysis-steps", job_id=job_id, status="completed", count=len(records))
@@ -282,7 +282,7 @@ class Evaluator:
             source_actual = source["request"]["url"]
 
             pagination_strategy = source.get("pagination_strategy") or {}
-            pagination_keys_actual = [v for k, v in pagination_strategy.items() if k.endswith("_key") and v]
+            pagination_keys_actual = [v["key"] for v in pagination_strategy.values() if v]
 
             try:
                 entities = await self._client.fetch_data(job_id, limit=expected_entity_count, offset=0)

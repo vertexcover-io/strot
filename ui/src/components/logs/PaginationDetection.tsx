@@ -65,7 +65,7 @@ export function PaginationDetection({
         {detection.strategy && (
           <div className="text-center">
             <span className="text-lg font-semibold text-purple-900 bg-purple-100 px-4 py-2 rounded-full">
-              Strategy: {detection.strategy}
+              Strategy: {detection.strategy.name}
             </span>
           </div>
         )}
@@ -89,18 +89,22 @@ export function PaginationDetection({
       )}
 
       {/* 2. Request Parameters Analysis */}
-      {detection.request_parameters &&
-        Object.keys(detection.request_parameters).length > 0 && (
+      {detection.potential_pagination_parameters &&
+        Object.keys(detection.potential_pagination_parameters).length > 0 && (
           <div className="mb-6">
             <h4 className="text-sm font-semibold text-gray-800 mb-3">
-              Request Parameters Analyzed
+              Potential Pagination Parameters Analyzed
             </h4>
             <CodeBlock
-              title="request_parameters.json"
+              title="potential_pagination_parameters.json"
               language="json"
               maxHeight="max-h-40"
             >
-              {JSON.stringify(detection.request_parameters, null, 2)}
+              {JSON.stringify(
+                detection.potential_pagination_parameters,
+                null,
+                2,
+              )}
             </CodeBlock>
           </div>
         )}
@@ -118,72 +122,15 @@ export function PaginationDetection({
           </div>
         )}
 
-        {/* Pagination Strategy Details */}
+        {/* Pagination Strategy Info */}
         {detection.status === "success" && detection.strategy && (
           <div>
             <h4 className="text-sm font-semibold text-gray-800 mb-3">
-              Strategy Details
+              Strategy Info
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(() => {
-                const strategyFields = {
-                  "page-based": ["page_key", "limit_key"],
-                  "page-offset": ["page_key", "offset_key", "base_offset"],
-                  "limit-offset": ["limit_key", "offset_key"],
-                  "cursor-based": ["cursor_key", "limit_key"],
-                };
-
-                const relevantFields =
-                  strategyFields[
-                    detection.strategy as keyof typeof strategyFields
-                  ] || [];
-
-                return Object.entries(detection as any)
-                  .filter(
-                    ([key, value]) =>
-                      relevantFields.includes(key) &&
-                      value !== undefined &&
-                      value !== null &&
-                      value !== "",
-                  )
-                  .map(([key, value]) => {
-                    const isObject =
-                      typeof value === "object" && value !== null;
-                    const displayKey = key
-                      .split("_")
-                      .map(
-                        (word) => word.charAt(0).toUpperCase() + word.slice(1),
-                      )
-                      .join(" ");
-
-                    return (
-                      <div
-                        key={key}
-                        className="bg-green-50 p-3 rounded-lg border border-green-200"
-                      >
-                        <span className="text-sm font-medium text-green-700">
-                          {displayKey}:
-                        </span>
-                        {isObject ? (
-                          <CodeBlock
-                            title={`${key}.json`}
-                            language="json"
-                            maxHeight="max-h-32"
-                            showCopy={false}
-                            className="mt-1"
-                          >
-                            {JSON.stringify(value, null, 2)}
-                          </CodeBlock>
-                        ) : (
-                          <div className="text-sm font-mono text-green-900 mt-1 bg-green-100 px-2 py-1 rounded">
-                            {String(value)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  });
-              })()}
-            </div>
+            <CodeBlock title="info.json" language="json" maxHeight="max-h-40">
+              {JSON.stringify(detection.strategy.info, null, 2)}
+            </CodeBlock>
           </div>
         )}
       </div>
