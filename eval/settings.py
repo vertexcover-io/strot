@@ -58,7 +58,7 @@ class AnalysisStepsAirtableSchema:
                 {"name": "close-overlay-popup", "color": "orangeLight2"},
                 {"name": "skip-to-content", "color": "yellowLight2"},
                 {"name": "load-more-content", "color": "blueLight2"},
-                {"name": "advance", "color": "greenLight2"},
+                {"name": "skip-similar-content", "color": "greenLight2"},
             ]
         },
     )
