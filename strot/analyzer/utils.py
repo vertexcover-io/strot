@@ -1,5 +1,4 @@
 import io
-import json
 import re
 import threading
 import unicodedata
@@ -11,12 +10,14 @@ from json_repair import repair_json
 from PIL import Image, ImageDraw
 from rapidfuzz import fuzz
 
-from strot.analyzer.schema import Pattern, Point
+from strot.analyzer.schema import Pattern, Point, Request
 
 __all__ = (
     "draw_point_on_image",
     "encode_image",
+    "extract_potential_cursor_values",
     "extract_json",
+    "get_potential_pagination_parameters",
     "guess_image_type",
     "normalize",
     "text_match_ratio",
@@ -153,28 +154,40 @@ def draw_point_on_image(
 
 def generate_patterns(input: str, output: str) -> list[Pattern]:
     """
-    Generate output patterns from input.
+    Generate output patterns from input for ALL occurrences of output, starting from the right.
 
     Args:
         input: Input string.
         output: Output string.
 
     Returns:
-        list[Pattern]: List of patterns.
+        list[Pattern]: List of patterns from all occurrences, prioritizing rightmost matches.
     """
-    pos = input.find(output)
-    if pos == -1:
-        return []
+    patterns: list[Pattern] = []
+    positions: list[int] = []
 
-    # Get the full before/after context
-    before = input[:pos]
-    after = input[pos + len(output) :]
+    # Find all occurrences of output in input (from right to left)
+    start = len(input)
+    while True:
+        pos = input.rfind(output, 0, start)
+        if pos == -1:
+            break
+        positions.append(pos)
+        start = pos  # Continue searching to the left
 
-    # Generate patterns of different delimiter lengths
-    return [
-        Pattern(before=before[-delim_len:], after=after[:delim_len])
-        for delim_len in range(min(20, len(before), len(after)), 0, -1)
-    ]
+    # Process positions (already in right-to-left order)
+    for pos in positions:
+        # Get the full before/after context for this occurrence
+        before = input[:pos]
+        after = input[pos + len(output) :]
+
+        # Generate patterns of different delimiter lengths for this occurrence
+        for delim_len in range(min(20, len(before), len(after)), 0, -1):
+            pattern = Pattern(before=before[-delim_len:], after=after[:delim_len])
+            if pattern not in patterns:  # Avoid duplicates
+                patterns.append(pattern)
+
+    return patterns
 
 
 def parse_python_code(markdown: str) -> str:
@@ -213,20 +226,70 @@ class LimitOffsetTracker:
         return []
 
 
-def json_load_value(value: Any) -> Any:
-    if isinstance(value, str):
-        try:
-            return json_load_value(json.loads(value))
-        except (json.JSONDecodeError, ValueError):
-            return value
-    elif isinstance(value, dict):
-        return {k: json_load_value(v) for k, v in value.items()}
-    else:
-        return value
+def is_digit_value(value: Any) -> bool:
+    """Check if value is a digit (for page, limit, offset)"""
+    return isinstance(value, int) or (isinstance(value, str) and value.strip().isdigit())
 
 
-def is_flat_or_flat_dict(value: Any) -> bool:
-    if not isinstance(value, dict):
-        return not isinstance(value, (list, tuple, set))
+def extract_potential_cursor_values(value: Any) -> list[str]:
+    """Extract all potential cursor values using regex patterns with proper boundaries"""
+    value_str = str(value)
+    extracted_values = []
 
-    return all(not isinstance(v, (dict, list, tuple, set)) for v in value.values())
+    def is_cursor_value(text: str) -> bool:
+        return (
+            # Alphanumeric with special chars, length > 15, must have both letters and numbers
+            (
+                re.match(r"^[A-Za-z0-9_\-+:.=/]+$", text)
+                and len(text) > 15
+                and re.search(r"[A-Za-z]", text)
+                and re.search(r"[0-9]", text)
+            )
+            or
+            # ISO datetime format
+            re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", text)
+        )
+
+    # Step 1: Check if whole string is a cursor
+    if is_cursor_value(value_str):
+        return [value_str]
+
+    # Step 2: Look for patterns
+    patterns = [
+        r'"([^"]+)"',  # Double quoted strings
+        r"'([^']+)'",  # Single quoted strings
+        r'\\"([^"]+)\\"',  # Double quoted strings
+    ]
+
+    for pattern in patterns:
+        matches = re.findall(pattern, value_str)
+        for match in matches:
+            if is_cursor_value(match):
+                extracted_values.append(match)
+
+    return list(set(extracted_values))
+
+
+def get_potential_pagination_parameters(request: Request) -> dict[str, Any] | None:
+    """
+    Extract potential pagination parameters from request queries and post data.
+
+    Args:
+        request: Request object
+
+    Returns:
+        Dictionary of potential pagination parameters or None if none found
+    """
+    result = {}
+
+    if request.queries:
+        for k, v in request.queries.items():
+            if is_digit_value(v) or bool(extract_potential_cursor_values(v)):
+                result[k] = v
+
+    if isinstance(request.post_data, dict):
+        for k, v in request.post_data.items():
+            if is_digit_value(v) or bool(extract_potential_cursor_values(v)):
+                result[k] = v
+
+    return result if result else None

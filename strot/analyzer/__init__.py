@@ -17,7 +17,13 @@ from strot.analyzer._meta.plugin import Plugin
 from strot.analyzer.schema import Point, Response, pagination_strategy
 from strot.analyzer.schema.request import Request
 from strot.analyzer.schema.source import Source
-from strot.analyzer.utils import draw_point_on_image, encode_image, parse_python_code, text_match_ratio
+from strot.analyzer.utils import (
+    draw_point_on_image,
+    encode_image,
+    get_potential_pagination_parameters,
+    parse_python_code,
+    text_match_ratio,
+)
 from strot.browser import launch_browser
 from strot.logging import LoggerType, get_logger, setup_logging
 from strot.type_adapter import TypeAdapter
@@ -93,7 +99,8 @@ async def analyze(
         else:
             return source
         finally:
-            await browser_ctx.close()
+            with contextlib.suppress(Exception):
+                await browser_ctx.close()
 
     if browser is None:
         async with launch_browser("headed") as browser_instance:
@@ -270,44 +277,63 @@ class _AnalyzerContext:
                 continue
         return prompts.schema.PaginationKeys()
 
-    async def detect_pagination_strategy(  # noqa: C901
+    async def detect_pagination_strategy(
         self, keys: prompts.schema.PaginationKeys, parameters: dict[str, Any]
     ) -> pagination_strategy.PaginationStrategy | None:
-        if keys.page_number_key and keys.offset_key:
-            return pagination_strategy.PageOffsetInfo(
-                page_key=keys.page_number_key,
-                offset_key=keys.offset_key,
-                base_offset=int(parameters[keys.offset_key]) // int(parameters[keys.page_number_key]),
+        # Check for cursor-based pagination first
+        if (cursor_key := keys.cursor_key) and (cursor := parameters.get(cursor_key)):
+            relevant_responses = []
+            for response in self._captured_responses:
+                response_parameters = get_potential_pagination_parameters(response.request)
+                if response_parameters and set(response_parameters).issubset(set(parameters)):
+                    relevant_responses.append(response)
+
+            relevant_responses.reverse()
+            pattern_map = pagination_strategy.CursorInfo.create_pattern_map(cursor, relevant_responses)
+            if pattern_map:  # Only proceed if we found patterns
+                cursor_param = pagination_strategy.CursorPaginationParameter(
+                    key=cursor_key,
+                    default_value=str(cursor),
+                    pattern_map=pattern_map,
+                )
+
+                limit_param = None
+                if keys.limit_key:
+                    limit_param = pagination_strategy.IndexPaginationParameter(
+                        key=keys.limit_key,
+                        default_value=int(parameters.get(keys.limit_key, 1)),
+                    )
+
+                return pagination_strategy.CursorInfo(cursor=cursor_param, limit=limit_param)
+
+        # Check for index-based pagination
+        page_param = None
+        limit_param = None
+        offset_param = None
+
+        if keys.page_number_key:
+            page_param = pagination_strategy.IndexPaginationParameter(
+                key=keys.page_number_key,
+                default_value=int(parameters.get(keys.page_number_key, 0)),
             )
-        elif keys.limit_key and keys.offset_key:
-            return pagination_strategy.LimitOffsetInfo(
-                limit_key=keys.limit_key,
-                offset_key=keys.offset_key,
+
+        if keys.limit_key:
+            limit_param = pagination_strategy.IndexPaginationParameter(
+                key=keys.limit_key,
+                default_value=int(parameters.get(keys.limit_key, 1)),
             )
-        elif keys.page_number_key:
-            return pagination_strategy.PageInfo(page_key=keys.page_number_key, limit_key=keys.limit_key)
-        elif cursor_key := keys.cursor_key:
-            cursor = parameters.get(cursor_key)
-            if isinstance(cursor, str):
-                for c_response in self._captured_responses:
-                    patterns = pagination_strategy.StringCursorInfo.generate_patterns(c_response.value, cursor)
-                    if patterns:
-                        return pagination_strategy.StringCursorInfo(
-                            cursor_key=cursor_key,
-                            limit_key=keys.limit_key,
-                            default_cursor=cursor,
-                            patterns=patterns,
-                        )
-            elif isinstance(cursor, dict):
-                for c_response in self._captured_responses:
-                    patterns_map = pagination_strategy.MapCursorInfo.generate_patterns_map(c_response.value, cursor)
-                    if any(patterns_map.values()):
-                        return pagination_strategy.MapCursorInfo(
-                            cursor_key=cursor_key,
-                            limit_key=keys.limit_key,
-                            default_cursor=cursor,
-                            patterns_map=patterns_map,
-                        )
+
+        if keys.offset_key:
+            offset_param = pagination_strategy.IndexPaginationParameter(
+                key=keys.offset_key,
+                default_value=int(parameters.get(keys.offset_key, 0)),
+            )
+
+        # Ensure we have at least page or offset for index-based pagination
+        if page_param or offset_param:
+            return pagination_strategy.IndexInfo(page=page_param, limit=limit_param, offset=offset_param)
+
+        return None
 
     async def run_step(self, query: str) -> Response | None:  # noqa: C901
         screenshot = await self._page.screenshot(type="png")
@@ -343,7 +369,11 @@ class _AnalyzerContext:
 
             if element := await self._plugin.get_last_similar_element(sections):
                 self._logger.info(
-                    "run-step", context=encode_image(screenshot), step="advance", action="scroll", target=element
+                    "run-step",
+                    context=encode_image(screenshot),
+                    step="skip-similar-content",
+                    action="scroll",
+                    target=element,
                 )
                 await self._plugin.scroll_to_element(element)
 
@@ -427,53 +457,43 @@ class _AnalyzerContext:
                 data=response.request.post_data,
             )
 
-            request_parameters = response.request.simple_parameters
+            potential_pagination_parameters = get_potential_pagination_parameters(response.request)
             self._logger.info(
                 "analysis",
                 action="detect-pagination",
-                request_parameters=request_parameters,
+                potential_pagination_parameters=potential_pagination_parameters,
                 status="pending",
             )
-            if not request_parameters:
+            if not potential_pagination_parameters:
                 self._logger.info(
                     "analysis",
                     action="detect-pagination",
-                    request_parameters=request_parameters,
+                    potential_pagination_parameters=potential_pagination_parameters,
                     status="failed",
                     reason="No pagination compatible parameters detected.",
                 )
                 continue
 
             if not pagination_keys.strategy_available():
-                pagination_keys = await self.detect_pagination_keys(request_parameters)
+                pagination_keys = await self.detect_pagination_keys(potential_pagination_parameters)
 
-            strategy = await self.detect_pagination_strategy(pagination_keys, request_parameters)
+            strategy = await self.detect_pagination_strategy(pagination_keys, potential_pagination_parameters)
             if strategy is None:
                 self._logger.info(
                     "analysis",
                     action="detect-pagination",
-                    request_parameters=request_parameters,
+                    potential_pagination_parameters=potential_pagination_parameters,
                     status="failed",
                     reason="No pagination strategy detected. Trying again after collecting new responses.",
                 )
                 continue
 
-            if isinstance(strategy, pagination_strategy.StringCursorInfo | pagination_strategy.MapCursorInfo):
-                log_kwargs = {
-                    "cursor_key": strategy.cursor_key,
-                    "limit_key": strategy.limit_key,
-                    "default_cursor": strategy.default_cursor,
-                }
-            else:
-                log_kwargs = strategy.model_dump()
-
             self._logger.info(
                 "analysis",
                 action="detect-pagination",
-                request_parameters=request_parameters,
+                potential_pagination_parameters=potential_pagination_parameters,
                 status="success",
-                strategy=strategy.name,
-                **log_kwargs,
+                strategy={"name": strategy.name, "info": strategy.model_dump()},
             )
             break
 
@@ -489,7 +509,6 @@ class _AnalyzerContext:
         else:
             self._logger.info("analysis", action="code-generation", status="success", code=code)
 
-        # Filter out headers to ignore
         for key in list(last_response.request.headers):
             if key.lstrip(":").lower() in HEADERS_TO_IGNORE:
                 last_response.request.headers.pop(key)
