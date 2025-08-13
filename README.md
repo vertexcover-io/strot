@@ -37,7 +37,7 @@ Get the full Strot experience (Web UI + API) instantly:
 Using [Patchright](https://github.com/synacktra/patchright-headless-server) browser
 
 ```bash
-docker run -p 5678:5678 synacktra/patchright-headless-server
+docker run -d -p 5678:5678 synacktra/patchright-headless-server
 STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX \
   docker compose -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
 ```
@@ -91,8 +91,9 @@ async def get_reviews():
     )
 
     # Use the same API call the website uses, with your own pagination
-    async for review in source.generate_data(limit=500, offset=100):
-        print(f"{review.rating}⭐ by {review.username}: {review.comment}")
+    async for reviews in source.generate_data(limit=500, offset=100):
+        for review in reviews:
+            print(f"{review['rating']}⭐ by {review['username']}: {review['comment']}")
 
 if __name__ == "__main__":
     asyncio.run(get_reviews())
@@ -121,8 +122,9 @@ async def get_products():
     )
 
     # Paginate through all products using the discovered API
-    async for product in source.generate_data(limit=100, offset=0):
-        print(f"{product.name}: ${product.price} ({product.rating}⭐)")
+    async for products in source.generate_data(limit=100, offset=0):
+        for product in products:
+            print(f"{product['name']}: ${product['price']} ({product['rating']}⭐)")
 
 if __name__ == "__main__":
     asyncio.run(get_products())
@@ -189,14 +191,14 @@ _`evaluations.json`_
   {
     "job_id": "existing-job-uuid",
     "expected_source": "https://api.example.com/reviews",
-    "expected_pagination_keys": ["page", "limit"],
+    "expected_pagination_keys": ["cursor", "limit"],
     "expected_entity_count": 243
   },
   {
     "site_url": "https://example.com/category/abc",
     "label": "products",
     "expected_source": "https://api.example.com/products",
-    "expected_pagination_keys": ["offset"],
+    "expected_pagination_keys": ["limit", "offset"],
     "expected_entity_count": 100
   }
 ]
