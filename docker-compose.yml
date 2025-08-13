@@ -76,9 +76,7 @@ services:
         max-file: "3"
 
   api:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    image: vertexcoverlabs/strot-api:latest
     container_name: strot-api
     restart: unless-stopped
     ports:
@@ -116,9 +114,7 @@ services:
         max-file: "5"
 
   ui:
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
+    image: vertexcoverlabs/strot-ui:latest
     container_name: strot-ui
     restart: unless-stopped
     ports:
