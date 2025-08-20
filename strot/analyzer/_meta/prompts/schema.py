@@ -31,15 +31,3 @@ class PaginationKeys(BaseModel):
     limit_key: str | None = None
     offset_key: str | None = None
     cursor_key: str | None = None
-
-    def strategy_available(self) -> bool:
-        if self.page_number_key and self.offset_key:
-            return True
-
-        if self.limit_key and self.offset_key:
-            return True
-
-        if self.page_number_key:
-            return True
-
-        return bool(self.cursor_key)

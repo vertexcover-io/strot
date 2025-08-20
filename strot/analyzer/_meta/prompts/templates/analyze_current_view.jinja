@@ -16,13 +16,13 @@ WHAT TO IGNORE:
 - Advertisements, cookie banners, unrelated content
 
 ACTIONS TO CHOOSE FROM (ORDERED BY PRIORITY):
-1. If you find pagination controls (Next, More, page numbers) that could load more relevant content:
+1. If you find pagination controls (Next, More, page numbers, >, ->, etc.) that could load more relevant content:
+   → If the pagination controls is only page numbers (1, 2, ...n), select the one that can be clicked
    → Set "load_more_content_coords" to the pagination element coordinates
-   → Leave other fields null
 
 2. If you find relevant text sections:
    → Set "text_sections" to the list of extracted text
-   → Leave coordinate fields null
+   → Leave coordinate fields null except "load_more_content_coords" if pagination controls are found
 
 3. If you see an overlay popup (cookie banner, newsletter signup, login modal) that blocks content (Ignore If popup body contains relevant content):
    → Set "close_overlay_popup_coords" to the dismiss/close button coordinates
