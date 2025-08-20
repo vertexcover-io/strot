@@ -23,7 +23,7 @@ export interface LogEvent {
   queries?: Record<string, unknown>;
   data?: unknown;
   code?: string;
-  strategy?: { name: string; info: Record<string, unknown> };
+  strategy?: { info: Record<string, unknown> } | Record<string, unknown>;
   potential_pagination_parameters?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -42,7 +42,7 @@ export interface AnalysisStep {
 export interface PaginationDetection {
   status?: string;
   potential_pagination_parameters?: Record<string, unknown>;
-  strategy?: { name: string; info: Record<string, unknown> };
+  strategy?: { info: Record<string, unknown> } | Record<string, unknown>;
   llm_calls: LogEvent[];
   reason?: string;
 }

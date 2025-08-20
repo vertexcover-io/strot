@@ -62,13 +62,6 @@ export function PaginationDetection({
         </div>
 
         {/* Strategy Result */}
-        {detection.strategy && (
-          <div className="text-center">
-            <span className="text-lg font-semibold text-purple-900 bg-purple-100 px-4 py-2 rounded-full">
-              Strategy: {detection.strategy.name}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* 1. LLM Analysis (exclude pending) */}
@@ -129,7 +122,7 @@ export function PaginationDetection({
               Strategy Info
             </h4>
             <CodeBlock title="info.json" language="json" maxHeight="max-h-40">
-              {JSON.stringify(detection.strategy.info, null, 2)}
+              {JSON.stringify(detection.strategy, null, 2)}
             </CodeBlock>
           </div>
         )}
