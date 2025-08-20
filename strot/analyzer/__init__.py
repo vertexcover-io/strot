@@ -7,19 +7,21 @@ from json import dumps as json_dumps
 from typing import Any, cast
 from urllib.parse import parse_qsl, urlparse
 
-from patchright.async_api import Browser, Page
+from patchright.async_api import Browser, Frame, Page
 from patchright.async_api import Response as InterceptedResponse
 from pydantic import BaseModel
 
 from strot import llm
 from strot.analyzer._meta import prompts
 from strot.analyzer._meta.plugin import Plugin
-from strot.analyzer.schema import Point, Response, pagination_strategy
+from strot.analyzer.schema import Point, Response, SSRResponsePreprocessor, pagination_strategy
 from strot.analyzer.schema.request import Request
 from strot.analyzer.schema.source import Source
 from strot.analyzer.utils import (
     draw_point_on_image,
     encode_image,
+    extract_potential_cursors,
+    generate_patterns,
     get_potential_pagination_parameters,
     parse_python_code,
     text_match_ratio,
@@ -128,18 +130,23 @@ class _AnalyzerContext:
         self._plugin = Plugin(page)
 
         self._ignore_js_files = True
+        self._page_headers = None
         self._captured_responses: list[Response] = []
 
-        self._page.on("response", self.response_handler)
+        self._page.on("response", self.handle_ajax_response)
 
     async def load_url(self, url: str, load_timeout: float | None) -> None:
         await self._page.set_viewport_size({"width": 1280, "height": 800})
         with contextlib.suppress(Exception):
-            await self._page.goto(url, timeout=load_timeout, wait_until="domcontentloaded")
+            response = await self._page.goto(url, timeout=load_timeout, wait_until="domcontentloaded")
+            if response:
+                self._page_headers = await response.request.all_headers()
+
         await self._page.wait_for_timeout(5000)
+        self._page.on("load", self.handle_server_side_rendering)
         self._ignore_js_files = False
 
-    async def response_handler(self, response: InterceptedResponse) -> None:
+    async def handle_ajax_response(self, response: InterceptedResponse) -> None:
         rsc_type = response.request.resource_type
         if rsc_type not in ("xhr", "fetch"):
             return
@@ -163,11 +170,31 @@ class _AnalyzerContext:
                         method=response.request.method,
                         url=f"{url.scheme}://{url.netloc}{url.path}",
                         queries=dict(parse_qsl(url.query)),
+                        type="ajax",
                         headers=await response.request.all_headers(),
                         post_data=response.request.post_data_json,
                     ),
                 )
             )
+
+    async def handle_server_side_rendering(self, frame: Frame) -> None:
+        parsed_url = urlparse(frame.url)
+        if parsed_url.scheme.lower() not in ("http", "https"):
+            return
+
+        self._captured_responses.append(
+            Response(
+                value=await self._page.content(),
+                request=Request(
+                    method="GET",
+                    url=f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}",
+                    type="ssr",
+                    queries=dict(parse_qsl(parsed_url.query)),
+                    headers=self._page_headers or {},
+                    post_data=None,
+                ),
+            )
+        )
 
     async def request_llm_completion(
         self,
@@ -277,61 +304,61 @@ class _AnalyzerContext:
                 continue
         return prompts.schema.PaginationKeys()
 
-    async def detect_pagination_strategy(
+    async def detect_pagination_strategy(  # noqa: C901
         self, keys: prompts.schema.PaginationKeys, parameters: dict[str, Any]
     ) -> pagination_strategy.PaginationStrategy | None:
-        # Check for cursor-based pagination first
-        if (cursor_key := keys.cursor_key) and (cursor := parameters.get(cursor_key)):
-            relevant_responses = []
-            for response in self._captured_responses:
-                response_parameters = get_potential_pagination_parameters(response.request)
-                if response_parameters and set(response_parameters).issubset(set(parameters)):
-                    relevant_responses.append(response)
-
-            relevant_responses.reverse()
-            pattern_map = pagination_strategy.CursorInfo.create_pattern_map(cursor, relevant_responses)
-            if pattern_map:  # Only proceed if we found patterns
-                cursor_param = pagination_strategy.CursorPaginationParameter(
-                    key=cursor_key,
-                    default_value=str(cursor),
-                    pattern_map=pattern_map,
-                )
-
-                limit_param = None
-                if keys.limit_key:
-                    limit_param = pagination_strategy.IndexPaginationParameter(
-                        key=keys.limit_key,
-                        default_value=int(parameters.get(keys.limit_key, 1)),
-                    )
-
-                return pagination_strategy.CursorInfo(cursor=cursor_param, limit=limit_param)
-
-        # Check for index-based pagination
         page_param = None
-        limit_param = None
-        offset_param = None
-
         if keys.page_number_key:
-            page_param = pagination_strategy.IndexPaginationParameter(
+            page_param = pagination_strategy.NumberParameter(
                 key=keys.page_number_key,
                 default_value=int(parameters.get(keys.page_number_key, 0)),
             )
 
-        if keys.limit_key:
-            limit_param = pagination_strategy.IndexPaginationParameter(
-                key=keys.limit_key,
-                default_value=int(parameters.get(keys.limit_key, 1)),
-            )
+        cursor_param = None
+        if (
+            (cursor_key := keys.cursor_key)
+            and (cursor := parameters.get(cursor_key))
+            and (potential_sub_cursors := extract_potential_cursors(cursor))
+        ):
+            best_match_count, best_response_text = 0, None
 
+            for response in self._captured_responses:
+                response_parameters = get_potential_pagination_parameters(response.request)
+                if response_parameters and set(response_parameters).issubset(parameters):
+                    match_count = sum(1 for v in potential_sub_cursors if v in response.value)
+                    if match_count >= best_match_count:
+                        best_match_count = match_count
+                        best_response_text = response.value
+
+            if best_response_text and best_match_count > 0:
+                pattern_map = {}
+                for value in potential_sub_cursors:
+                    if patterns := generate_patterns(best_response_text, value):
+                        pattern_map[value] = patterns
+
+                if pattern_map:
+                    cursor_param = pagination_strategy.CursorParameter(
+                        key=cursor_key, default_value=str(cursor), pattern_map=pattern_map
+                    )
+
+        offset_param = None
         if keys.offset_key:
-            offset_param = pagination_strategy.IndexPaginationParameter(
+            offset_param = pagination_strategy.NumberParameter(
                 key=keys.offset_key,
                 default_value=int(parameters.get(keys.offset_key, 0)),
             )
 
-        # Ensure we have at least page or offset for index-based pagination
-        if page_param or offset_param:
-            return pagination_strategy.IndexInfo(page=page_param, limit=limit_param, offset=offset_param)
+        limit_param = None
+        if keys.limit_key:
+            limit_param = pagination_strategy.NumberParameter(
+                key=keys.limit_key,
+                default_value=int(parameters.get(keys.limit_key, 1)),
+            )
+
+        if page_param or offset_param or cursor_param:
+            return pagination_strategy.PaginationStrategy(
+                page=page_param, limit=limit_param, offset=offset_param, cursor=cursor_param
+            )
 
         return None
 
@@ -357,35 +384,51 @@ class _AnalyzerContext:
         except Exception:
             return None
 
-        if sections := result.text_sections:
-            response_to_return = None
-            for response in self._captured_responses:
-                score = text_match_ratio(sections, response.value)
-                if score < 0.5:
-                    continue
-
-                response_to_return = response
-                break
-
-            if element := await self._plugin.get_last_similar_element(sections):
-                self._logger.info(
-                    "run-step",
-                    context=encode_image(screenshot),
-                    step="skip-similar-content",
-                    action="scroll",
-                    target=element,
-                )
-                await self._plugin.scroll_to_element(element)
-
-            if element or response_to_return:
-                # If either similar element skip was performed or response was found, end the step
-                return response_to_return
-
         def get_context(point: Point) -> bytes:
             image = draw_point_on_image(screenshot, point)
             buffer = io.BytesIO()
             image.save(buffer, format="PNG")
             return encode_image(buffer.getvalue())
+
+        if sections := result.text_sections:
+            response_to_return = None
+            container = await self._plugin.get_parent_container(sections)
+            for response in self._captured_responses:
+                score = text_match_ratio(sections, response.value)
+                if score < 0.5:
+                    continue
+
+                if response.request.type == "ssr" and container:
+                    response.preprocessor = SSRResponsePreprocessor(element_selector=container)
+
+                response_to_return = response
+                break
+
+            skip = False
+            if container and (last_child := await self._plugin.get_last_visible_child(container)):
+                self._logger.info(
+                    "run-step",
+                    context=encode_image(screenshot),
+                    step="skip-similar-content",
+                    action="scroll",
+                    target=last_child,
+                )
+                await self._plugin.scroll_to_element(last_child)
+                skip = True
+
+            if point := result.close_overlay_popup_coords:
+                self._logger.info(
+                    "run-step",
+                    context=get_context(point),
+                    step="close-overlay-popup",
+                    action="click",
+                    point=point.model_dump(),
+                )
+                await self._plugin.click_at_point(point)
+
+            if skip or response_to_return:
+                # If either similar element skip was performed or response was found, end the step
+                return response_to_return
 
         if point := result.close_overlay_popup_coords:
             self._logger.info(
@@ -428,7 +471,7 @@ class _AnalyzerContext:
         max_steps: int = 30,
     ) -> Source | None:
         last_response = None
-        pagination_keys = prompts.schema.PaginationKeys()
+        pg_keys = prompts.schema.PaginationKeys()
         strategy = None
         for step in range(1, max_steps + 1):
             try:
@@ -446,15 +489,22 @@ class _AnalyzerContext:
                 await asyncio.sleep(2.5)
                 continue
 
+            success_log_kwargs = {
+                "request_type": response.request.type,
+                "method": response.request.method,
+                "url": response.request.url,
+                "queries": response.request.queries,
+                "data": response.request.post_data,
+            }
+            if response.preprocessor:
+                success_log_kwargs["response_preprocessor"] = response.preprocessor.model_dump()
+
             self._logger.info(
                 "analysis",
                 action="run-step",
                 step_count=step,
                 status="success",
-                method=response.request.method,
-                url=response.request.url,
-                queries=response.request.queries,
-                data=response.request.post_data,
+                **success_log_kwargs,
             )
 
             potential_pagination_parameters = get_potential_pagination_parameters(response.request)
@@ -472,12 +522,13 @@ class _AnalyzerContext:
                     status="failed",
                     reason="No pagination compatible parameters detected.",
                 )
+                await self._plugin.scroll_to_next_view()
                 continue
 
-            if not pagination_keys.strategy_available():
-                pagination_keys = await self.detect_pagination_keys(potential_pagination_parameters)
+            if not (pg_keys.page_number_key or pg_keys.cursor_key or pg_keys.offset_key):
+                pg_keys = await self.detect_pagination_keys(potential_pagination_parameters)
 
-            strategy = await self.detect_pagination_strategy(pagination_keys, potential_pagination_parameters)
+            strategy = await self.detect_pagination_strategy(pg_keys, potential_pagination_parameters)
             if strategy is None:
                 self._logger.info(
                     "analysis",
@@ -493,7 +544,7 @@ class _AnalyzerContext:
                 action="detect-pagination",
                 potential_pagination_parameters=potential_pagination_parameters,
                 status="success",
-                strategy={"name": strategy.name, "info": strategy.model_dump()},
+                strategy={"info": strategy.model_dump()},
             )
             break
 
@@ -501,7 +552,11 @@ class _AnalyzerContext:
             return None
 
         self._logger.info("analysis", action="code-generation", status="pending")
-        code, default_limit = await self.get_extraction_code_and_default_limit(output_schema, last_response.value)
+        response_value = last_response.value
+        if last_response.preprocessor:
+            response_value = last_response.preprocessor.run(response_value) or response_value
+
+        code, default_limit = await self.get_extraction_code_and_default_limit(output_schema, response_value)
         if not code:
             self._logger.info(
                 "analysis", action="code-generation", status="failed", reason="LLM failed to generate code."
@@ -516,6 +571,7 @@ class _AnalyzerContext:
         return Source(
             request=last_response.request,
             pagination_strategy=strategy,
+            response_preprocessor=last_response.preprocessor,
             extraction_code=code,
             default_limit=default_limit or 1,
         )
