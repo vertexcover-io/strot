@@ -120,9 +120,85 @@ function generateCSSSelector(element) {
     }
 
     if (current.parentElement) {
-      const siblings = Array.from(current.parentElement.children);
-      const index = siblings.indexOf(current) + 1;
-      selector += `:nth-child(${index})`;
+      // First check if selector without nth-child is unique
+      const pathWithoutNth = [...path];
+      pathWithoutNth.unshift(selector);
+
+      if (current.parentElement.id) {
+        pathWithoutNth.unshift(
+          `#${escapeCSSIdentifier(current.parentElement.id)}`,
+        );
+      }
+
+      const testSelectorWithoutNth = pathWithoutNth.join(" > ");
+
+      console.log(
+        `Testing selector without nth-child: ${testSelectorWithoutNth}`,
+      );
+
+      // Check if selector without nth-child matches multiple elements
+      let needsNthChild = false;
+      try {
+        const foundElements = document.querySelectorAll(testSelectorWithoutNth);
+        console.log(
+          `Found ${foundElements.length} elements with selector: ${testSelectorWithoutNth}`,
+        );
+
+        if (foundElements.length > 1) {
+          needsNthChild = true;
+          console.log("Multiple elements found, nth-child needed");
+        } else if (foundElements.length === 1 && foundElements[0] === current) {
+          console.log(
+            "Single element found and it is current element, no nth-child needed",
+          );
+        }
+      } catch (error) {
+        // If selector is invalid, we'll try with nth-child
+        needsNthChild = true;
+        console.log("Selector error, nth-child needed:", error);
+      }
+
+      // Only add nth-child if the selector matches multiple elements
+      if (needsNthChild) {
+        console.log("Adding nth-child...");
+        // CSS nth-child counts ALL children, not just visible ones
+        const siblings = Array.from(current.parentElement.children);
+        const index = siblings.indexOf(current) + 1;
+
+        console.log(`Element is ${index} of ${siblings.length} siblings`);
+
+        // Try with nth-child
+        const selectorWithNth = selector + `:nth-child(${index})`;
+        const pathWithNth = [...path];
+        pathWithNth.unshift(selectorWithNth);
+
+        if (current.parentElement.id) {
+          pathWithNth.unshift(
+            `#${escapeCSSIdentifier(current.parentElement.id)}`,
+          );
+        }
+
+        const testSelector = pathWithNth.join(" > ");
+
+        console.log(`Testing selector with nth-child: ${testSelector}`);
+
+        // Check if selector with nth-child works and is unique
+        try {
+          const found = document.querySelector(testSelector);
+          if (found === element) {
+            selector = selectorWithNth;
+            console.log("nth-child selector works, using it");
+          } else {
+            console.log("nth-child selector does not match target element");
+          }
+          // If it doesn't work, keep selector without nth-child
+        } catch (error) {
+          // If selector is invalid, keep selector without nth-child
+          console.log("nth-child selector error:", error);
+        }
+      } else {
+        console.log("No nth-child needed");
+      }
     }
 
     path.unshift(selector);
@@ -150,47 +226,100 @@ function areElementsSimilar(element1, element2) {
   if (element1 === element2) return false;
 
   // Same tag name
-  if (element1.tagName !== element2.tagName) return false;
+  if (element1.tagName !== element2.tagName) {
+    console.log(
+      "Different tag names:",
+      element1.tagName,
+      "vs",
+      element2.tagName,
+    );
+    return false;
+  }
 
   // Get all attributes for both elements
   const attrs1 = Array.from(element1.attributes);
   const attrs2 = Array.from(element2.attributes);
 
-  // Must have same number of attributes
-  if (attrs1.length !== attrs2.length) return false;
+  // Get attribute names for comparison
+  const attrNames1 = attrs1.map((attr) => attr.name).sort();
+  const attrNames2 = attrs2.map((attr) => attr.name).sort();
 
-  // Check each attribute exists in both elements with same value
-  for (const attr of attrs1) {
-    const attrName = attr.name;
-    const attrValue1 = attr.value;
+  console.log("Attributes 1:", attrNames1);
+  console.log("Attributes 2:", attrNames2);
 
-    if (!element2.hasAttribute(attrName)) return false;
-
-    const attrValue2 = element2.getAttribute(attrName);
-
-    // Special handling for class attribute - compare sorted class lists
-    if (attrName === "class") {
-      const classList1 = attrValue1
-        .trim()
-        .split(/\s+/)
-        .filter((c) => c)
-        .sort();
-      const classList2 = attrValue2
-        .trim()
-        .split(/\s+/)
-        .filter((c) => c)
-        .sort();
-
-      if (classList1.length !== classList2.length) return false;
-      for (let i = 0; i < classList1.length; i++) {
-        if (classList1[i] !== classList2[i]) return false;
-      }
-    } else {
-      // For all other attributes, values must be identical
-      if (attrValue1 !== attrValue2) return false;
+  // Check if both elements have the same set of attribute names
+  if (attrNames1.length !== attrNames2.length) {
+    console.log(
+      "Different number of attributes:",
+      attrNames1.length,
+      "vs",
+      attrNames2.length,
+    );
+    return false;
+  }
+  for (let i = 0; i < attrNames1.length; i++) {
+    if (attrNames1[i] !== attrNames2[i]) {
+      console.log(
+        "Different attribute names at index",
+        i,
+        ":",
+        attrNames1[i],
+        "vs",
+        attrNames2[i],
+      );
+      return false;
     }
   }
 
+  // Check class attribute values for similarity (only attribute where values matter)
+  if (attrNames1.includes("class")) {
+    const attrValue1 = element1.getAttribute("class");
+    const attrValue2 = element2.getAttribute("class");
+
+    console.log(`Checking class attribute:`, attrValue1, "vs", attrValue2);
+
+    const classList1 = attrValue1
+      .trim()
+      .split(/\s+/)
+      .filter((c) => c)
+      .sort();
+    const classList2 = attrValue2
+      .trim()
+      .split(/\s+/)
+      .filter((c) => c)
+      .sort();
+
+    console.log("Class lists:", classList1, "vs", classList2);
+
+    // Find the shorter class list (assume it's the "base" structure)
+    const shorterList =
+      classList1.length <= classList2.length ? classList1 : classList2;
+    const longerList =
+      classList1.length <= classList2.length ? classList2 : classList1;
+
+    // Check if all classes from the shorter list exist in the longer list
+    // This allows for extra modifier classes like "sold-out", "featured", etc.
+    const hasAllCoreClasses = shorterList.every((cls) =>
+      longerList.includes(cls),
+    );
+
+    console.log("Has all core classes:", hasAllCoreClasses);
+
+    if (!hasAllCoreClasses) return false;
+
+    // Also check that they share at least 70% of classes in common
+    const commonClasses = classList1.filter((cls) => classList2.includes(cls));
+    const maxClasses = Math.max(classList1.length, classList2.length);
+    const similarityRatio = commonClasses.length / maxClasses;
+
+    console.log("Class similarity ratio:", similarityRatio);
+
+    if (similarityRatio < 0.7) return false;
+  }
+
+  // For all other attributes, we only check that they exist, not their values
+
+  console.log("Elements are similar");
   return true;
 }
 
@@ -231,35 +360,13 @@ function getElementsInView(elements, surfaceRatio = 1.0) {
 }
 
 /**
- * Check if element comes after another element in document order
- *
- * @param {HTMLElement} elementA - First element
- * @param {HTMLElement} elementB - Second element
- * @returns {boolean} True if elementB comes after elementA in document order
- */
-function isElementAfter(elementA, elementB) {
-  const position = elementA.compareDocumentPosition(elementB);
-  return !!(position & Node.DOCUMENT_POSITION_FOLLOWING);
-}
-
-/**
- * Check if element is completely outside the current viewport
+ * Check if element is completely below the current viewport
  *
  * @param {HTMLElement} element - Element to check
- * @returns {boolean} True if element is completely outside viewport
+ * @returns {boolean} True if element is completely below viewport
  */
 function isElementCompletelyOutsideViewport(element) {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const rect = element.getBoundingClientRect();
-
-  return (
-    rect.bottom < 0 ||
-    rect.top > viewportHeight ||
-    rect.right < 0 ||
-    rect.left > viewportWidth
-  );
+  return element.getBoundingClientRect().top > window.innerHeight;
 }
 
 /**
@@ -282,75 +389,88 @@ function canScrollIntoView(element) {
 }
 
 /**
- * Map elements in viewport to their last visible sibling in the DOM
+ * Find all containers that contain all given text sections
  *
- * @param {number} surfaceRatio - Surface ratio to expand viewport bounds
- * @returns {Map<HTMLElement, HTMLElement>} Map of elements to last visible siblings in the DOM
+ * @param {string[]} sections - Array of text sections to find
+ * @returns {Object[]} Array of container objects with selector and text
  */
-function mapLastVisibleSiblings(surfaceRatio = 1.0) {
-  const elementsInDOM = getElementsInDOM();
-  const elementsInView = getElementsInView(elementsInDOM, surfaceRatio);
-  const leafElementsInView = elementsInView.filter(
-    (el) =>
-      !elementsInView.some((otherEl) => otherEl !== el && el.contains(otherEl)),
-  );
+function getContainersWithTextSections(sections) {
+  const allElements = getElementsInDOM();
 
-  const mapping = new Map();
-
-  leafElementsInView.forEach((elementInView) => {
-    const elementText = elementInView.textContent?.trim() || "";
-    if (!elementText) return;
-
-    // if element has no attributes, use its parent element if it is in view
-    if (elementInView.attributes.length === 0) {
-      const parentElement = elementInView.parentElement;
-      if (getElementsInView([parentElement], surfaceRatio).length > 0) {
-        elementInView = parentElement;
-      }
+  // Find all potential container elements that contain all text sections
+  const potentialContainers = allElements.filter((container) => {
+    if (container.tagName.toLowerCase() === "html") {
+      return false;
     }
 
-    // Only consider elements that have one or more similar siblings
-    const allSimilarElements = elementsInDOM.filter((element) =>
-      areElementsSimilar(elementInView, element),
+    const containerText = container.textContent.trim();
+
+    // Must contain all text sections
+    const containsAllSections = sections.every((section) =>
+      containerText.includes(section.trim()),
     );
-    if (allSimilarElements.length === 0) {
-      return;
-    }
 
-    // Only consider siblings that comes after the current viewport element
-    const siblingsAfterViewport = allSimilarElements.filter((sibling) =>
-      isElementAfter(elementInView, sibling),
-    );
-    if (siblingsAfterViewport.length === 0) {
-      return;
-    }
-
-    // Only consider siblings that are completely outside the viewport
-    const siblingsAfterAndOutside = siblingsAfterViewport.filter((sibling) =>
-      isElementCompletelyOutsideViewport(sibling),
-    );
-    if (siblingsAfterAndOutside.length === 0) {
-      return;
-    }
-
-    // Only consider siblings that are visible
-    const visibleSiblings = siblingsAfterAndOutside.filter(canScrollIntoView);
-    if (visibleSiblings.length === 0) {
-      return;
-    }
-
-    // Select the last visible sibling
-    const lastSibling = visibleSiblings[visibleSiblings.length - 1];
-    mapping.set(elementInView, lastSibling);
+    return containsAllSections;
   });
 
-  return mapping;
+  if (potentialContainers.length === 0) {
+    return [];
+  }
+
+  return potentialContainers.map((container) => {
+    return {
+      selector: generateCSSSelector(container),
+      text: container.textContent.trim(),
+    };
+  });
+}
+
+/**
+ * Find the last visible child that matches criteria (first/last child similarity)
+ *
+ * @param {HTMLElement} listingContainer - Listing container element
+ * @returns {String|null} CSS selector of the last visible child that matches criteria
+ */
+function getLastVisibleChild(listingContainer) {
+  // Get all direct children of the parent container
+  const children = Array.from(listingContainer.children);
+  if (children.length < 2) {
+    return null;
+  }
+
+  // Find the last child that can be scrolled into view
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+
+    // Check if this child is similar to the first child
+    const areSimilar = areElementsSimilar(children[0], child);
+    if (!areSimilar) {
+      continue;
+    }
+
+    // Check if child is completely outside viewport
+    const isOutsideViewport = isElementCompletelyOutsideViewport(child);
+    if (!isOutsideViewport) {
+      continue;
+    }
+
+    // Check if child can be scrolled into view
+    if (canScrollIntoView(child)) {
+      return generateCSSSelector(child);
+    }
+  }
+
+  return null;
 }
 
 // Expose to window
 window.scrollToNextView = scrollToNextView;
 window.getElementsInDOM = getElementsInDOM;
 window.getElementsInView = getElementsInView;
-window.mapLastVisibleSiblings = mapLastVisibleSiblings;
 window.generateCSSSelector = generateCSSSelector;
+window.areElementsSimilar = areElementsSimilar;
+window.isElementCompletelyOutsideViewport = isElementCompletelyOutsideViewport;
+window.canScrollIntoView = canScrollIntoView;
+window.getContainersWithTextSections = getContainersWithTextSections;
+window.getLastVisibleChild = getLastVisibleChild;
 window.strotPluginInjected = true;

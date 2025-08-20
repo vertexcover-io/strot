@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from patchright.async_api import Page
 
@@ -15,7 +15,7 @@ class Plugin:
     def __init__(self, page: Page) -> None:
         self._page = page
 
-    async def evaluate(self, expr: str, args=None) -> bool:
+    async def evaluate(self, expr: str, args=None) -> Any:
         if not await self._page.evaluate(
             "() => window.strotPluginInjected === true",
             isolated_context=False,
@@ -52,35 +52,43 @@ class Plugin:
     async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
         return await self.evaluate("([direction]) => window.scrollToNextView({ direction })", [direction])
 
-    async def get_last_similar_element(self, text_sections: list[str]) -> str | None:
-        texts_in_view_to_last_sibling_selectors: dict[str, str] = await self.evaluate(
-            """
-            () => {
-                const textsInViewToLastSiblingSelector = {};
-                const mapping = window.mapLastVisibleSiblings(1.25);
-                mapping.forEach((lastSiblingElement, elementInView) => {
-                    textsInViewToLastSiblingSelector[elementInView.textContent.trim()] = window.generateCSSSelector(lastSiblingElement);
-                });
-                return textsInViewToLastSiblingSelector;
-            }
-            """
+    async def get_parent_container(self, text_sections: list[str]) -> str | None:
+        containers: list[dict[str, Any]] = await self.evaluate(
+            "([sections]) => window.getContainersWithTextSections(sections)", [text_sections]
         )
 
-        # Sort texts by length (longer first) to prioritize longer matching texts
-        for text_in_view, selector in sorted(
-            texts_in_view_to_last_sibling_selectors.items(),
-            key=lambda x: len(x[0]),
-            reverse=True,
-        ):
-            best_match_ratio = 0.0
-            for section in sorted(text_sections, key=len, reverse=True):
-                match_ratio = text_match_ratio([section], text_in_view)
+        if not containers:
+            return None
 
-                if match_ratio > best_match_ratio:
-                    best_match_ratio = match_ratio
+        target_length = len(" ".join(text_sections))
+        for container in containers:
+            container["match_ratio"] = text_match_ratio(text_sections, container["text"])
+            container["text_length"] = len(container["text"])
+            container["extra_text_ratio"] = (
+                (len(container["text"]) - target_length) / target_length if target_length > 0 else 0
+            )
 
-            if best_match_ratio:
-                return selector
+        # Sort by match ratio (descending), then by extra text ratio (ascending - less extra text is better)
+        # Then by text length (descending - larger containers preferred if other factors are similar)
+        containers.sort(key=lambda x: (-x["match_ratio"], x["extra_text_ratio"], -x["text_length"]))
+
+        if (best_container := containers[0]) and best_container["match_ratio"] > 0.5:
+            return best_container["selector"]
+
+    async def get_last_visible_child(self, listing_container_selector: str) -> str | None:
+        return await self.evaluate(
+            """
+            ([selector]) => {
+                const listingContainer = document.querySelector(selector);
+                if (!listingContainer) {
+                    return null;
+                }
+
+                return window.getLastVisibleChild(listingContainer);
+            }
+            """,
+            [listing_container_selector],
+        )
 
     async def scroll_to_element(self, selector: str) -> None:
         await self._page.locator(selector).scroll_into_view_if_needed()
