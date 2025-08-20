@@ -1,4 +1,5 @@
-from typing import Any
+import random
+from typing import Any, Literal
 
 import rnet
 from pydantic import BaseModel, PrivateAttr
@@ -14,6 +15,7 @@ class RequestException(Exception):
 class Request(BaseModel):
     method: str
     url: str
+    type: Literal["ajax", "ssr"] = "ajax"
     queries: dict[str, str]
     headers: dict[str, str]
     post_data: dict[str, Any] | str | None = None
@@ -24,6 +26,7 @@ class Request(BaseModel):
         is_post_data_dict = isinstance(self.post_data, dict)
         request = Request(
             method=self.method,
+            type=self.type,
             url=self.url,
             queries=self.queries.copy(),
             headers=self.headers.copy(),
@@ -47,15 +50,26 @@ class Request(BaseModel):
 
         return request
 
+    def _get_client(self) -> rnet.Client:
+        if self._client is None:
+            choices = []
+            i = 0
+            while True:
+                try:
+                    choices.append(getattr(rnet.Impersonate, f"Chrome13{i}"))
+                    i += 1
+                except AttributeError:
+                    break
+
+            self._client = rnet.Client(impersonate=random.choice(choices))  # noqa: S311
+        return self._client
+
     async def make(
         self,
         *,
         state: dict[str, Any] | None = None,
         timeout: float | None = None,
     ) -> rnet.Response:
-        if self._client is None:
-            self._client = rnet.Client(impersonate=rnet.Impersonate.Chrome130)
-
         request = self
         if state is not None:
             request = self._apply_state(state)
@@ -75,7 +89,7 @@ class Request(BaseModel):
             else:
                 request_kwargs["body"] = request.post_data
 
-        response = await self._client.request(
+        response = await self._get_client().request(
             method=getattr(rnet.Method, request.method.upper()), url=request.url, **request_kwargs
         )
         if response.status != 200:
