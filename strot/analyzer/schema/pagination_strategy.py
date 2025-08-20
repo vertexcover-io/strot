@@ -1,55 +1,50 @@
 from collections.abc import Callable
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from pydantic import BaseModel, model_validator
 
-from strot.analyzer.schema import Pattern, Response
+from strot.analyzer.schema import Pattern, ResponsePreprocessorT
 from strot.analyzer.schema.request import Request, RequestException
-from strot.analyzer.utils import LimitOffsetTracker, extract_potential_cursor_values, generate_patterns
+from strot.analyzer.utils import LimitOffsetTracker
 
-__all__ = ("PaginationStrategy", "IndexPaginationParameter", "IndexInfo", "CursorPaginationParameter", "CursorInfo")
+__all__ = ("PaginationStrategy", "NumberParameter", "CursorParameter")
 
 
-class IndexPaginationParameter(TypedDict):
+class NumberParameter(TypedDict):
     key: str
     default_value: int
 
 
-class CursorPaginationParameter(TypedDict):
+class CursorParameter(TypedDict):
     key: str
-    default_value: str  # string representation of the default value
+    default_value: str
     pattern_map: dict[str, list[Pattern]]
 
 
 class PaginationStrategy(BaseModel):
-    @property
-    def name(self) -> str:
-        raise NotImplementedError("Subclasses must implement this property")
-
-    async def generate_data(
-        self,
-        request: Request,
-        tracker: LimitOffsetTracker,
-        extract_fn: Callable[[str], list],
-        default_limit: int = 1,
-    ):
-        raise NotImplementedError("Subclasses must implement this method")
-
-
-class IndexInfo(PaginationStrategy):
-    page: IndexPaginationParameter | None = None
-    limit: IndexPaginationParameter | None = None
-    offset: IndexPaginationParameter | None = None
+    page: NumberParameter | None = None
+    cursor: CursorParameter | None = None
+    limit: NumberParameter | None = None
+    offset: NumberParameter | None = None
 
     @model_validator(mode="after")
     def validate_required_fields(self):
-        if not self.page and not self.offset:
-            raise ValueError("Either page or offset parameter is required")
+        if not self.page and not self.offset and not self.cursor:
+            raise ValueError("Either page, offset or cursor parameter is required")
         return self
 
-    @property
-    def name(self) -> str:
-        return "index-based"
+    async def generate_data(
+        self,
+        *,
+        request: Request,
+        tracker: LimitOffsetTracker,
+        response_preprocessor: ResponsePreprocessorT | None = None,
+        extract_fn: Callable[[str], list],
+        default_limit: int = 1,
+    ):
+        gen_fn = self._get_gen_fn()
+        async for data in gen_fn(request, tracker, response_preprocessor, extract_fn, default_limit):
+            yield data
 
     def _get_gen_fn(self):
         """Return the pagination combination in priority order"""
@@ -59,29 +54,28 @@ class IndexInfo(PaginationStrategy):
             return self._generate_page_limit_data
         elif self.page and self.offset:
             return self._generate_page_offset_data
+        elif self.cursor:
+            return self._generate_cursor_data
         else:
             return self._generate_page_limit_data
 
-    async def _detect_page_base(self, request: Request) -> int:
-        """Detect if API uses 0-based or 1-based page numbering by testing page 0"""
-        try:
-            await (await request.make(state={self.page["key"]: "0"})).text()
-        except RequestException:
-            return 1  # Page 0 failed, API is 1-based
-        else:
-            return 0  # Page 0 works, API is 0-based
-
-    async def generate_data(
-        self, request: Request, tracker: LimitOffsetTracker, extract_fn: Callable[[str], list], default_limit: int = 1
-    ):
-        gen_fn = self._get_gen_fn()
-        async for data in gen_fn(request, tracker, extract_fn, default_limit):
-            yield data
+    @staticmethod
+    async def _make_request(
+        request: Request,
+        state: dict,
+        response_preprocessor: ResponsePreprocessorT | None,
+    ) -> tuple[str, str | None]:
+        response = await request.make(state=state)
+        original_text = await response.text()
+        if response_preprocessor:
+            return original_text, response_preprocessor.run(original_text)
+        return original_text, original_text
 
     async def _generate_limit_offset_data(
         self,
         request: Request,
         tracker: LimitOffsetTracker,
+        response_preprocessor: ResponsePreprocessorT | None,
         extract_fn: Callable[[str], list],
         default_limit: int,
     ):
@@ -104,18 +98,18 @@ class IndexInfo(PaginationStrategy):
                 state[self.limit["key"]] = str(page_size)
 
             try:
-                response = await (await request.make(state=state)).text()
+                _, response = await self._make_request(request, state, response_preprocessor)
             except RequestException as e:
                 # On first 400 error, try default limit if limit key is available and we haven't used fallback yet
                 if e.status_code == 400 and self.limit and not used_fallback:
                     page_size = default_limit
                     state[self.limit["key"]] = str(page_size)
                     used_fallback = True
-                    response = await (await request.make(state=state)).text()
+                    _, response = await self._make_request(request, state, response_preprocessor)
                 else:
                     raise
 
-            if response == last_response:
+            if not response or response == last_response:
                 break
             last_response = response
             data = extract_fn(response)
@@ -140,11 +134,12 @@ class IndexInfo(PaginationStrategy):
         self,
         request: Request,
         tracker: LimitOffsetTracker,
+        response_preprocessor: ResponsePreprocessorT | None,
         extract_fn: Callable[[str], list],
         default_limit: int,
     ):
         """Generate data using page/limit pagination"""
-        page_base = await self._detect_page_base(request)
+        page_base = await detect_page_base(request, self.page)
 
         # Determine the page size (items per page)
         page_size = default_limit
@@ -152,9 +147,8 @@ class IndexInfo(PaginationStrategy):
             # Try to use user's requested limit as page size, fall back to default
             try:
                 test_state = {self.page["key"]: str(page_base), self.limit["key"]: str(tracker.limit)}
-                response = await (await request.make(state=test_state)).text()
-                test_data = extract_fn(response)
-                if test_data:
+                _, response = await self._make_request(request, test_state, response_preprocessor)
+                if response and (test_data := extract_fn(response)):
                     page_size = min(len(test_data), tracker.limit)
             except RequestException:
                 page_size = default_limit
@@ -178,19 +172,19 @@ class IndexInfo(PaginationStrategy):
                 state[self.limit["key"]] = str(page_size)
 
             try:
-                response = await (await request.make(state=state)).text()
+                _, response = await self._make_request(request, state, response_preprocessor)
             except RequestException as e:
                 # On first 400 error, try default limit if limit key is available and we haven't used fallback yet
                 if e.status_code == 400 and self.limit and not used_fallback:
                     page_size = default_limit
                     state[self.limit["key"]] = str(page_size)
                     used_fallback = True
-                    response = await (await request.make(state=state)).text()
+                    _, response = await self._make_request(request, state, response_preprocessor)
                 else:
                     break
 
             # Check for identical responses (end of data)
-            if response == last_response:
+            if not response or response == last_response:
                 if current_page == 1:  # both page 0 and 1 can return the same response
                     current_page += 1
                     continue
@@ -213,11 +207,12 @@ class IndexInfo(PaginationStrategy):
         self,
         request: Request,
         tracker: LimitOffsetTracker,
+        response_preprocessor: ResponsePreprocessorT | None,
         extract_fn: Callable[[str], list],
         default_limit: int,
     ):
         """Generate data using page/offset pagination"""
-        page_base = await self._detect_page_base(request)
+        page_base = await detect_page_base(request, self.page)
 
         # This is tricky - we need to figure out how page and offset interact
         # Common patterns:
@@ -247,11 +242,11 @@ class IndexInfo(PaginationStrategy):
             }
 
             try:
-                response = await (await request.make(state=state)).text()
+                _, response = await self._make_request(request, state, response_preprocessor)
             except RequestException:
                 break
 
-            if response == last_response:
+            if not response or response == last_response:
                 if current_page == 1:  # both page 0 and 1 can return the same response
                     current_page += 1
                     continue
@@ -274,124 +269,21 @@ class IndexInfo(PaginationStrategy):
 
             current_page += 1
 
-
-class CursorInfo(PaginationStrategy):
-    cursor: CursorPaginationParameter
-    limit: IndexPaginationParameter | None = None
-
-    @property
-    def name(self) -> str:
-        return "cursor-based"
-
-    @classmethod
-    def create_pattern_map(cls, cursor_value: Any, relevant_responses: list[Response]) -> dict[str, list[Pattern]]:
-        """Create pattern map by extracting cursor values and searching in captured responses"""
-        extracted_values = extract_potential_cursor_values(cursor_value)
-        if not extracted_values:
-            return {}
-
-        # Find the response with the most matching values (not necessarily all)
-        best_response = None
-        best_match_count = 0
-
-        for response in relevant_responses:
-            response_text = response.value
-
-            # Count how many extracted values are found in this response
-            match_count = sum(1 for value in extracted_values if value in response_text)
-
-            # Keep track of the response with the most matches
-            if match_count >= best_match_count:
-                best_match_count = match_count
-                best_response = response
-
-        # If we found a response with at least some matches, generate patterns
-        if best_response and best_match_count > 0:
-            pattern_map = {}
-            response_text = best_response.value
-
-            for value in extracted_values:
-                patterns = generate_patterns(response_text, value)
-                if patterns:
-                    pattern_map[value] = patterns
-
-            return pattern_map
-
-        return {}
-
-    def extract_cursor(self, response_text: str) -> str | None:
-        """Extract next cursor from response using pattern map"""
-        cursor_values = {}
-
-        for value, patterns in self.cursor["pattern_map"].items():
-            if not patterns:
-                # Constant value that doesn't need updating
-                cursor_values[value] = value
-                continue
-
-            for pattern in patterns:
-                if (output := pattern.test(response_text)) and len(output) == len(value):
-                    cursor_values[value] = output
-                    break
-            else:
-                # If we can't find a pattern for this value, cursor extraction failed
-                return None
-
-        if not cursor_values:
-            return None
-
-        # Reconstruct cursor with new values
-        new_cursor = self.cursor["default_value"]
-        for old_value, new_value in cursor_values.items():
-            new_cursor = new_cursor.replace(old_value, new_value)
-
-        return new_cursor
-
-    async def get_start_cursor(self, request: Request) -> str | None:
-        """Determine the starting cursor value for pagination."""
-
-        # Try 1: No cursor (some APIs support starting without cursor)
-        try:
-            _ = await (await request.make(state={self.cursor["key"]: None})).text()
-        except RequestException:
-            pass
-        else:
-            return None
-
-        # Try 2: Replace cursor values with null to create a "first page" cursor
-        try:
-            cursor = self.cursor["default_value"]
-            for value in self.cursor["pattern_map"]:
-                # Replace the cursor value with "null", handling quoted values properly
-                pos = cursor.find(value)
-                if pos != -1:
-                    # Check for quotes around the value
-                    if pos > 0 and cursor[pos - 1] == '"':
-                        value = f'"{value}"'
-                        i = 2
-                        while pos >= i and cursor[pos - i] == "\\":
-                            value = f"\\{value}\\"
-                            i += 1
-
-                    cursor = cursor.replace(value, "null")
-
-            _ = await (await request.make(state={self.cursor["key"]: cursor})).text()
-        except RequestException:
-            pass
-        else:
-            return cursor
-
-        # Try 3: Use original default cursor as fallback
-        return self.cursor["default_value"]
-
-    async def generate_data(
+    async def _generate_cursor_data(  # noqa: C901
         self,
         request: Request,
         tracker: LimitOffsetTracker,
+        response_preprocessor: ResponsePreprocessorT | None,
         extract_fn: Callable[[str], list],
         default_limit: int = 1,
     ):
-        state = {self.cursor["key"]: await self.get_start_cursor(request)}
+        all_cursors = []
+        start_cursor = await get_start_cursor(request, self.cursor)
+        if start_cursor:
+            all_cursors.append(start_cursor)
+        state = {self.cursor["key"]: start_cursor}
+        if self.page:
+            state[self.page["key"]] = str(await detect_page_base(request, self.page))
         if self.limit:
             state[self.limit["key"]] = str(tracker.limit)
 
@@ -399,14 +291,19 @@ class CursorInfo(PaginationStrategy):
         last_response = None
         while tracker.remaining_items > 0:
             try:
-                response = await (await request.make(state=state)).text()
+                orig, response = await self._make_request(request, state, response_preprocessor)
             except RequestException as e:
                 if e.status_code == 400 and self.limit and first_request:
                     state[self.limit["key"]] = str(default_limit)
-                    response = await (await request.make(state=state)).text()
+                    orig, response = await self._make_request(request, state, response_preprocessor)
                 else:
                     raise
-            if response == last_response:
+            if not response or response == last_response:
+                if self.page:
+                    current_page = int(state[self.page["key"]])
+                    if current_page == 1:  # both page 0 and 1 can return the same response
+                        state[self.page["key"]] = str(current_page + 1)
+                        continue
                 break
             last_response = response
             data = extract_fn(response)
@@ -422,7 +319,87 @@ class CursorInfo(PaginationStrategy):
                 # For cursor pagination, update global_position even when no slice is returned
                 tracker.global_position += len(data)
 
-            next_cursor = self.extract_cursor(response)
-            if next_cursor is None or next_cursor == state[self.cursor["key"]]:
+            next_cursor = extract_cursor(orig, self.cursor)
+            if next_cursor is None or next_cursor in all_cursors:
                 break
+            all_cursors.append(next_cursor)
             state[self.cursor["key"]] = next_cursor
+            if self.page:
+                state[self.page["key"]] = str(int(state[self.page["key"]]) + 1)
+
+
+async def detect_page_base(request: Request, page_parameter: NumberParameter) -> int:
+    """Detect if API uses 0-based or 1-based page numbering by testing page 0"""
+    try:
+        await (await request.make(state={page_parameter["key"]: "0"})).text()
+    except RequestException:
+        return 1  # Page 0 failed, API is 1-based
+    else:
+        return 0  # Page 0 works, API is 0-based
+
+
+async def get_start_cursor(request: Request, cursor_parameter: CursorParameter) -> str | None:
+    """Determine the starting cursor value for pagination."""
+
+    # Try 1: No cursor (some APIs support starting without cursor)
+    try:
+        _ = await (await request.make(state={cursor_parameter["key"]: None})).text()
+    except RequestException:
+        pass
+    else:
+        return None
+
+    # Try 2: Replace sub cursors with null to create a "first page" cursor
+    try:
+        cursor = cursor_parameter["default_value"]
+        for value in cursor_parameter["pattern_map"]:
+            # Replace the cursor value with "null", handling quoted values properly
+            pos = cursor.find(value)
+            if pos != -1:
+                # Check for quotes around the value
+                if pos > 0 and cursor[pos - 1] == '"':
+                    value = f'"{value}"'
+                    i = 2
+                    while pos >= i and cursor[pos - i] == "\\":
+                        value = f"\\{value}\\"
+                        i += 1
+
+                cursor = cursor.replace(value, "null")
+
+        _ = await (await request.make(state={cursor_parameter["key"]: cursor})).text()
+    except RequestException:
+        pass
+    else:
+        return cursor
+
+    # Fallback: Use default cursor as starting cursor
+    return cursor_parameter["default_value"]
+
+
+def extract_cursor(response_text: str, cursor_parameter: CursorParameter) -> str | None:
+    """Extract cursor from response using pattern map"""
+    cursor_values = {}
+
+    for value, patterns in cursor_parameter["pattern_map"].items():
+        if not patterns:
+            # Constant value that doesn't need updating
+            cursor_values[value] = value
+            continue
+
+        for pattern in patterns:
+            if (output := pattern.test(response_text)) and len(output) == len(value):
+                cursor_values[value] = output
+                break
+        else:
+            # If we can't find a pattern for this value, cursor extraction failed
+            return None
+
+    if not cursor_values:
+        return None
+
+    # Reconstruct cursor with new values
+    new_cursor = cursor_parameter["default_value"]
+    for old_value, new_value in cursor_values.items():
+        new_cursor = new_cursor.replace(old_value, new_value)
+
+    return new_cursor

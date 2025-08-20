@@ -1,20 +1,20 @@
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, PrivateAttr
 
-from strot.analyzer.schema.pagination_strategy import CursorInfo, IndexInfo
+from strot.analyzer.schema import ResponsePreprocessorT
+from strot.analyzer.schema.pagination_strategy import PaginationStrategy
 from strot.analyzer.schema.request import Request
 from strot.analyzer.utils import LimitOffsetTracker
 
 __all__ = ("Source",)
 
-StrategyT = TypeVar("StrategyT", IndexInfo, CursorInfo)
-
 
 class Source(BaseModel):
     request: Request
-    pagination_strategy: StrategyT | None = None
+    pagination_strategy: PaginationStrategy | None = None
+    response_preprocessor: ResponsePreprocessorT | None = None
     extraction_code: str | None = None
     default_limit: int = 1
 
@@ -45,10 +45,19 @@ class Source(BaseModel):
         tracker = LimitOffsetTracker(limit, offset)
         if self.pagination_strategy:
             async for data in self.pagination_strategy.generate_data(
-                self.request, tracker, self.extract_data, self.default_limit
+                request=self.request,
+                tracker=tracker,
+                response_preprocessor=self.response_preprocessor,
+                extract_fn=self.extract_data,
+                default_limit=self.default_limit,
             ):
                 yield data
         else:
-            data = self.extract_data(await (await self.request.make()).text())
-            if slice_data := tracker.slice(data):
-                yield slice_data
+            response_text = await (await self.request.make()).text()
+            if self.response_preprocessor:
+                response_text = self.response_preprocessor.run(response_text)
+
+            if response_text:
+                data = self.extract_data(response_text)
+                if slice_data := tracker.slice(data):
+                    yield slice_data
