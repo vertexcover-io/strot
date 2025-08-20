@@ -15,8 +15,8 @@ from strot.analyzer.schema import Pattern, Point, Request
 __all__ = (
     "draw_point_on_image",
     "encode_image",
-    "extract_potential_cursor_values",
     "extract_json",
+    "extract_potential_cursors",
     "get_potential_pagination_parameters",
     "guess_image_type",
     "normalize",
@@ -231,27 +231,21 @@ def is_digit_value(value: Any) -> bool:
     return isinstance(value, int) or (isinstance(value, str) and value.strip().isdigit())
 
 
-def extract_potential_cursor_values(value: Any) -> list[str]:
-    """Extract all potential cursor values using regex patterns with proper boundaries"""
+def is_potential_cursor(value: str) -> bool:
+    return (
+        re.match(r"^[A-Za-z0-9_\-+:.=/]+$", value)
+        and len(value) >= 8
+        or re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", value)  # ISO datetime format
+    )
+
+
+def extract_potential_cursors(value: Any) -> list[str]:
+    """Extract all potential cursors using regex patterns with proper boundaries"""
     value_str = str(value)
     extracted_values = []
 
-    def is_cursor_value(text: str) -> bool:
-        return (
-            # Alphanumeric with special chars, length > 15, must have both letters and numbers
-            (
-                re.match(r"^[A-Za-z0-9_\-+:.=/]+$", text)
-                and len(text) > 15
-                and re.search(r"[A-Za-z]", text)
-                and re.search(r"[0-9]", text)
-            )
-            or
-            # ISO datetime format
-            re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", text)
-        )
-
     # Step 1: Check if whole string is a cursor
-    if is_cursor_value(value_str):
+    if is_potential_cursor(value_str):
         return [value_str]
 
     # Step 2: Look for patterns
@@ -264,7 +258,7 @@ def extract_potential_cursor_values(value: Any) -> list[str]:
     for pattern in patterns:
         matches = re.findall(pattern, value_str)
         for match in matches:
-            if is_cursor_value(match):
+            if is_potential_cursor(match):
                 extracted_values.append(match)
 
     return list(set(extracted_values))
@@ -284,12 +278,12 @@ def get_potential_pagination_parameters(request: Request) -> dict[str, Any] | No
 
     if request.queries:
         for k, v in request.queries.items():
-            if is_digit_value(v) or bool(extract_potential_cursor_values(v)):
+            if is_digit_value(v) or bool(extract_potential_cursors(v)):
                 result[k] = v
 
     if isinstance(request.post_data, dict):
         for k, v in request.post_data.items():
-            if is_digit_value(v) or bool(extract_potential_cursor_values(v)):
+            if is_digit_value(v) or bool(extract_potential_cursors(v)):
                 result[k] = v
 
     return result if result else None
