@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import logging
 from enum import Enum
@@ -6,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import structlog
+from PIL import Image
 from structlog.processors import CallsiteParameter
 
 __all__ = (
@@ -117,7 +120,7 @@ def get_logger(name: str | None = None, /, *handler_config: BaseHandlerConfig, *
 
 
 class ConsoleFormatter(logging.Formatter):
-    def format(self, record):
+    def format(self, record):  # noqa: C901
         try:
             data = json.loads(record.getMessage())
         except json.JSONDecodeError:
@@ -133,8 +136,15 @@ class ConsoleFormatter(logging.Formatter):
                 message_parts.append(f"{v.__class__.__name__}: {v!s}")
             elif isinstance(v, float):
                 message_parts.append(f"{k}={v:.2f}")
-            elif isinstance(v, str) and "\n" in v:
-                message_parts.append(f"{k}='''\n{v.strip("\n")}\n'''")
+            elif isinstance(v, str):
+                if "\n" in v:
+                    message_parts.append(f"{k}='''\n{v.strip("\n")}\n'''")
+                    continue
+                try:
+                    if Image.open(io.BytesIO(base64.b64decode(v))).format is not None:
+                        message_parts.append(f"{k}={v[:100]}...")
+                except Exception:
+                    message_parts.append(f"{k}={v!r}")
             else:
                 message_parts.append(f"{k}={v!r}")
 
