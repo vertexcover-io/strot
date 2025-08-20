@@ -182,12 +182,10 @@ Evaluate multiple (existing or new) jobs from a file or stdin.
 ╰───────────────────────────────────────────────────────────────────────────────╯
 ```
 
-Create a file with your desired evaluation inputs
+> Make sure the API server is running & Airtable is configured before running the evaluation.
 
-_`evaluations.json`_
-
-```json
-[
+```bash
+echo '[
   {
     "job_id": "existing-job-uuid",
     "expected_source": "https://api.example.com/reviews",
@@ -201,15 +199,7 @@ _`evaluations.json`_
     "expected_pagination_keys": ["limit", "offset"],
     "expected_entity_count": 100
   }
-]
-```
-
-Run the evaluation
-
-> Make sure the API server is running & Airtable is configured before running the evaluation.
-
-```bash
-cat evaluations.json | uv run stroteval
+]' | uv run stroteval
 ```
 
 ## 🆘 Need Help?
