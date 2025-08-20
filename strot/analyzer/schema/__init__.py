@@ -1,5 +1,7 @@
 import re
+from typing import TypeVar
 
+from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
 from strot.analyzer.schema.request import Request
@@ -23,6 +25,26 @@ class Pattern(BaseModel):
         return matches[-1] if matches else None
 
 
+class ResponsePreprocessor(BaseModel):
+    def run(self, response_text: str) -> str | None:
+        raise NotImplementedError
+
+
+class SSRResponsePreprocessor(ResponsePreprocessor):
+    """Extracts the content of a specific element from the SSR response."""
+
+    element_selector: str
+
+    def run(self, response_text: str) -> str | None:
+        soup = BeautifulSoup(response_text, "html.parser")
+        element = soup.select_one(self.element_selector)
+        return str(element) if element else None
+
+
+ResponsePreprocessorT = TypeVar("ResponsePreprocessorT", bound=SSRResponsePreprocessor)
+
+
 class Response(BaseModel):
-    value: str
     request: Request
+    value: str
+    preprocessor: ResponsePreprocessorT | None = None
