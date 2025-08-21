@@ -30,8 +30,8 @@ class ResponsePreprocessor(BaseModel):
         raise NotImplementedError
 
 
-class SSRResponsePreprocessor(ResponsePreprocessor):
-    """Extracts the content of a specific element from the SSR response."""
+class HTMLResponsePreprocessor(ResponsePreprocessor):
+    """Extracts the content of a specific element from the HTML response."""
 
     element_selector: str
 
@@ -41,7 +41,7 @@ class SSRResponsePreprocessor(ResponsePreprocessor):
         return str(element) if element else None
 
 
-ResponsePreprocessorT = TypeVar("ResponsePreprocessorT", bound=SSRResponsePreprocessor)
+ResponsePreprocessorT = TypeVar("ResponsePreprocessorT", bound=HTMLResponsePreprocessor)
 
 
 class Response(BaseModel):
