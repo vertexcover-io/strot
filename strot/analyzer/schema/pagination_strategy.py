@@ -80,7 +80,6 @@ class PaginationStrategy(BaseModel):
         default_limit: int,
     ):
         """Generate data using limit/offset pagination"""
-        current_offset = tracker.offset
         page_size = tracker.limit if self.limit else default_limit
 
         first_request = True
@@ -92,7 +91,7 @@ class PaginationStrategy(BaseModel):
 
         while tracker.remaining_items > 0:
             state = {
-                self.offset["key"]: str(current_offset),
+                self.offset["key"]: str(tracker.global_position),
             }
             if self.limit:
                 state[self.limit["key"]] = str(page_size)
@@ -125,8 +124,6 @@ class PaginationStrategy(BaseModel):
 
             if slice_data := tracker.slice(data):
                 yield slice_data
-                # Move to next page by incrementing offset by the full data length
-                current_offset += len(data)
             else:
                 break
 
@@ -155,17 +152,13 @@ class PaginationStrategy(BaseModel):
 
         # Calculate which pages we need to fetch
         start_page = page_base + (tracker.offset // page_size)
-        end_item = tracker.offset + tracker.limit
-        end_page = page_base + ((end_item - 1) // page_size)
 
         current_page = start_page
         last_response = None
         used_fallback = False  # Track if we've already used the default limit fallback
 
-        # Set initial global position for tracker based on the starting page
-        tracker.global_position = (start_page - page_base) * page_size
-
-        while tracker.remaining_items > 0 and current_page <= end_page:
+        tracker.global_position = tracker.offset
+        while tracker.remaining_items > 0:
             # Prepare request state
             state = {self.page["key"]: str(current_page)}
             if self.limit:
@@ -289,7 +282,11 @@ class PaginationStrategy(BaseModel):
 
         first_request = True
         last_response = None
+        if self.offset:
+            tracker.global_position = tracker.offset
         while tracker.remaining_items > 0:
+            if self.offset:
+                state[self.offset["key"]] = str(tracker.global_position)
             try:
                 orig, response = await self._make_request(request, state, response_preprocessor)
             except RequestException as e:
@@ -315,9 +312,6 @@ class PaginationStrategy(BaseModel):
 
             if slice_data := tracker.slice(data):
                 yield slice_data
-            else:
-                # For cursor pagination, update global_position even when no slice is returned
-                tracker.global_position += len(data)
 
             next_cursor = extract_cursor(orig, self.cursor)
             if next_cursor is None or next_cursor in all_cursors:
@@ -399,7 +393,7 @@ def extract_cursor(response_text: str, cursor_parameter: CursorParameter) -> str
 
     # Reconstruct cursor with new values
     new_cursor = cursor_parameter["default_value"]
-    for old_value, new_value in cursor_values.items():
-        new_cursor = new_cursor.replace(old_value, new_value)
+    for old_value in sorted(cursor_values.keys(), key=len, reverse=True):
+        new_cursor = new_cursor.replace(old_value, cursor_values[old_value])
 
     return new_cursor
