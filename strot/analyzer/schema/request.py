@@ -52,16 +52,17 @@ class Request(BaseModel):
 
     def _get_client(self) -> rnet.Client:
         if self._client is None:
-            choices = []
-            i = 0
-            while True:
-                try:
-                    choices.append(getattr(rnet.Impersonate, f"Chrome13{i}"))
-                    i += 1
-                except AttributeError:
-                    break
-
-            self._client = rnet.Client(impersonate=random.choice(choices))  # noqa: S311
+            # Collect available Chrome impersonations dynamically to avoid brittle name assumptions
+            choices = [
+                getattr(rnet.Impersonate, name)
+                for name in dir(rnet.Impersonate)
+                if name.startswith("Chrome") and name[6:].isdigit() and name[6:].startswith("13")
+            ]
+            if choices:
+                self._client = rnet.Client(impersonate=random.choice(choices))  # noqa: S311
+            else:
+                # Fallback: default client without impersonation
+                self._client = rnet.Client()
         return self._client
 
     async def make(
