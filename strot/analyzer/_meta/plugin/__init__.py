@@ -75,19 +75,19 @@ class Plugin:
         if (best_container := containers[0]) and best_container["match_ratio"] > 0.5:
             return best_container["selector"]
 
-    async def get_last_visible_child(self, listing_container_selector: str) -> str | None:
+    async def get_last_visible_child(self, parent_container_selector: str) -> str | None:
         return await self.evaluate(
             """
             ([selector]) => {
-                const listingContainer = document.querySelector(selector);
-                if (!listingContainer) {
+                const parentContainer = document.querySelector(selector);
+                if (!parentContainer) {
                     return null;
                 }
 
-                return window.getLastVisibleChild(listingContainer);
+                return window.getLastVisibleChild(parentContainer);
             }
             """,
-            [listing_container_selector],
+            [parent_container_selector],
         )
 
     async def scroll_to_element(self, selector: str) -> None:
