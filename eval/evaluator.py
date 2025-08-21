@@ -367,7 +367,10 @@ class Evaluator:
         """Evaluate the analysis job."""
 
         if not self._metrics_table or not self._analysis_steps_table:
-            await self._ensure_tables_exist()
+            try:
+                await self._ensure_tables_exist()
+            except Exception:
+                await self._ensure_tables_exist()  # retry a second time
             self._metrics_table = self._api.table(env_settings.AIRTABLE_BASE_ID, env_settings.AIRTABLE_METRICS_TABLE)
             self._analysis_steps_table = self._api.table(
                 env_settings.AIRTABLE_BASE_ID, env_settings.AIRTABLE_ANALYSIS_STEPS_TABLE
