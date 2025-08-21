@@ -215,12 +215,12 @@ class LimitOffsetTracker:
 
         chunk_start = max(0, self.offset - self.global_position)
         chunk_end = min(len(data), chunk_start + self.remaining_items)
+        self.global_position += len(data)
 
         if chunk_start < len(data):
             slice_data = data[chunk_start:chunk_end]
             if slice_data:
                 self.remaining_items -= len(slice_data)
-                self.global_position += len(data)
                 return slice_data
 
         return []
