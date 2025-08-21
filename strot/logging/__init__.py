@@ -141,10 +141,12 @@ class ConsoleFormatter(logging.Formatter):
                     message_parts.append(f"{k}='''\n{v.strip("\n")}\n'''")
                     continue
                 try:
-                    if Image.open(io.BytesIO(base64.b64decode(v))).format is not None:
+                    if Image.open(io.BytesIO(base64.b64decode(v))).format:
                         message_parts.append(f"{k}={v[:100]}...")
-                except Exception:
-                    message_parts.append(f"{k}={v!r}")
+                        continue
+                except Exception:  # noqa: S110
+                    pass
+                message_parts.append(f"{k}={v!r}")
             else:
                 message_parts.append(f"{k}={v!r}")
 
