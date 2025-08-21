@@ -136,7 +136,7 @@ class PaginationStrategy(BaseModel):
         default_limit: int,
     ):
         """Generate data using page/limit pagination"""
-        page_base = await detect_page_base(request, self.page)
+        page_base = await self._detect_page_base(self.page, request, response_preprocessor, extract_fn)
 
         # Determine the page size (items per page)
         page_size = default_limit
@@ -205,7 +205,7 @@ class PaginationStrategy(BaseModel):
         default_limit: int,
     ):
         """Generate data using page/offset pagination"""
-        page_base = await detect_page_base(request, self.page)
+        page_base = await self._detect_page_base(self.page, request, response_preprocessor, extract_fn)
 
         # This is tricky - we need to figure out how page and offset interact
         # Common patterns:
@@ -276,7 +276,9 @@ class PaginationStrategy(BaseModel):
             all_cursors.append(start_cursor)
         state = {self.cursor["key"]: start_cursor}
         if self.page:
-            state[self.page["key"]] = str(await detect_page_base(request, self.page))
+            state[self.page["key"]] = str(
+                await self._detect_page_base(self.page, request, response_preprocessor, extract_fn)
+            )
         if self.limit:
             state[self.limit["key"]] = str(tracker.limit)
 
@@ -321,15 +323,21 @@ class PaginationStrategy(BaseModel):
             if self.page:
                 state[self.page["key"]] = str(int(state[self.page["key"]]) + 1)
 
-
-async def detect_page_base(request: Request, page_parameter: NumberParameter) -> int:
-    """Detect if API uses 0-based or 1-based page numbering by testing page 0"""
-    try:
-        await (await request.make(state={page_parameter["key"]: "0"})).text()
-    except RequestException:
+    async def _detect_page_base(
+        self,
+        page_parameter: NumberParameter,
+        request: Request,
+        response_preprocessor: ResponsePreprocessorT | None,
+        extract_fn: Callable[[str], list],
+    ) -> int:
+        """Detect if API uses 0-based or 1-based page numbering by testing page 0"""
+        try:
+            _, response = await self._make_request(request, {page_parameter["key"]: "0"}, response_preprocessor)
+            if response and extract_fn(response):
+                return 0  # Page 0 works, API is 0-based
+        except RequestException:
+            pass
         return 1  # Page 0 failed, API is 1-based
-    else:
-        return 0  # Page 0 works, API is 0-based
 
 
 async def get_start_cursor(request: Request, cursor_parameter: CursorParameter) -> str | None:
