@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from strot import llm
 from strot.analyzer._meta import prompts
 from strot.analyzer._meta.plugin import Plugin
-from strot.analyzer.schema import Point, Response, SSRResponsePreprocessor, pagination_strategy
+from strot.analyzer.schema import HTMLResponsePreprocessor, Point, Response, pagination_strategy
 from strot.analyzer.schema.request import Request
 from strot.analyzer.schema.source import Source
 from strot.analyzer.utils import (
@@ -399,7 +399,7 @@ class _AnalyzerContext:
                     continue
 
                 if response.request.type == "ssr" and container:
-                    response.preprocessor = SSRResponsePreprocessor(element_selector=container)
+                    response.preprocessor = HTMLResponsePreprocessor(element_selector=container)
 
                 response_to_return = response
                 break
