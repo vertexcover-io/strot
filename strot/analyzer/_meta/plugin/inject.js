@@ -191,82 +191,6 @@ function generateCSSSelector(element) {
 }
 
 /**
- * Check if two elements are similar
- *
- * @param {HTMLElement} element1
- * @param {HTMLElement} element2
- * @returns {boolean}
- */
-function areElementsSimilar(element1, element2) {
-  // They should not be identical
-  if (element1 === element2) return false;
-
-  // Same tag name
-  if (element1.tagName !== element2.tagName) {
-    return false;
-  }
-
-  // Get all attributes for both elements
-  const attrs1 = Array.from(element1.attributes);
-  const attrs2 = Array.from(element2.attributes);
-
-  // Get attribute names for comparison
-  const attrNames1 = attrs1.map((attr) => attr.name).sort();
-  const attrNames2 = attrs2.map((attr) => attr.name).sort();
-
-  // Check if both elements have the same set of attribute names
-  if (attrNames1.length !== attrNames2.length) {
-    return false;
-  }
-  for (let i = 0; i < attrNames1.length; i++) {
-    if (attrNames1[i] !== attrNames2[i]) {
-      return false;
-    }
-  }
-
-  // Check class attribute values for similarity (only attribute where values matter)
-  if (attrNames1.includes("class")) {
-    const attrValue1 = element1.getAttribute("class");
-    const attrValue2 = element2.getAttribute("class");
-
-    const classList1 = attrValue1
-      .trim()
-      .split(/\s+/)
-      .filter((c) => c)
-      .sort();
-    const classList2 = attrValue2
-      .trim()
-      .split(/\s+/)
-      .filter((c) => c)
-      .sort();
-
-    // Find the shorter class list (assume it's the "base" structure)
-    const shorterList =
-      classList1.length <= classList2.length ? classList1 : classList2;
-    const longerList =
-      classList1.length <= classList2.length ? classList2 : classList1;
-
-    // Check if all classes from the shorter list exist in the longer list
-    // This allows for extra modifier classes like "sold-out", "featured", etc.
-    const hasAllCoreClasses = shorterList.every((cls) =>
-      longerList.includes(cls),
-    );
-
-    if (!hasAllCoreClasses) return false;
-
-    // Also check that they share at least 70% of classes in common
-    const commonClasses = classList1.filter((cls) => classList2.includes(cls));
-    const maxClasses = Math.max(classList1.length, classList2.length);
-    const similarityRatio = commonClasses.length / maxClasses;
-
-    if (similarityRatio < 0.7) return false;
-  }
-
-  // For all other attributes, we only check that they exist, not their values
-  return true;
-}
-
-/**
  * Get all elements in the DOM.
  *
  * @returns {HTMLElement[]} Array of all elements in the DOM.
@@ -340,43 +264,106 @@ function canScrollIntoView(element) {
 function getContainersWithTextSections(sections) {
   const allElements = getElementsInDOM();
 
+  // Normalize search sections once
+  const normalizedSections = sections.map((s) => s.replace(/\s+/g, " ").trim());
+
   // Find all potential container elements that contain all text sections
   const potentialContainers = allElements.filter((container) => {
-    if (container.tagName.toLowerCase() === "html") {
+    if (
+      container.tagName.toLowerCase() === "html" ||
+      container.tagName.toLowerCase() === "body"
+    ) {
       return false;
     }
 
-    const containerText = container.textContent.trim();
+    // Normalize whitespace for comparison
+    const containerText = container.textContent.replace(/\s+/g, " ").trim();
 
-    // Must contain all text sections
-    const containsAllSections = sections.every((section) =>
-      containerText.includes(section.trim()),
+    const containerTextLower = containerText.toLowerCase();
+    const containsAllSections = normalizedSections.every(
+      (normalizedSection) => {
+        const normalizedSectionLower = normalizedSection.toLowerCase();
+        return containerTextLower.includes(normalizedSectionLower);
+      },
     );
 
     return containsAllSections;
   });
 
   if (potentialContainers.length === 0) {
+    // If no single container has all sections, try to find the parent of containers with individual sections
+    // This handles cases where sections are from multiple items
+    const containersBySection = sections.map((section) => {
+      const sectionLower = section.replace(/\s+/g, " ").trim().toLowerCase();
+      return allElements.filter((el) => {
+        if (el.tagName.toLowerCase() === "html") return false;
+        const text = el.textContent.replace(/\s+/g, " ").trim().toLowerCase();
+        return text.includes(sectionLower) && text.length < 2000; // Focus on smaller containers
+      });
+    });
+
+    // Find common parents
+    const firstSectionContainers = containersBySection[0] || [];
+
+    if (firstSectionContainers.length > 0) {
+      // Get all potential parent containers
+      const parentCandidates = new Set();
+      firstSectionContainers.forEach((container) => {
+        let parent = container.parentElement;
+        while (parent && parent !== document.body) {
+          // Check if this parent contains most/all sections
+          const parentText = parent.textContent
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+          const sectionsInParent = normalizedSections.filter((section) =>
+            parentText.includes(section.toLowerCase()),
+          );
+
+          if (
+            sectionsInParent.length >=
+            Math.ceil(normalizedSections.length * 0.6)
+          ) {
+            // At least 60% of sections
+            parentCandidates.add(parent);
+            break; // Don't go higher once we find a good parent
+          }
+          parent = parent.parentElement;
+        }
+      });
+
+      if (parentCandidates.size > 0) {
+        const parents = Array.from(parentCandidates);
+        const result = parents.map((container) => ({
+          selector: generateCSSSelector(container),
+          text: container.textContent.trim(),
+        }));
+        return result;
+      }
+    }
+
     return [];
   }
 
-  return potentialContainers.map((container) => {
+  const result = potentialContainers.map((container) => {
     return {
       selector: generateCSSSelector(container),
       text: container.textContent.trim(),
     };
   });
+
+  return result;
 }
 
 /**
- * Find the last visible child that matches criteria (first/last child similarity)
+ * Find the last visible child
  *
- * @param {HTMLElement} listingContainer - Listing container element
- * @returns {String|null} CSS selector of the last visible child that matches criteria
+ * @param {HTMLElement} parentContainer - Parent container element
+ * @returns {String|null} CSS selector of the last visible child
  */
-function getLastVisibleChild(listingContainer) {
+function getLastVisibleChild(parentContainer) {
   // Get all direct children of the parent container
-  const children = Array.from(listingContainer.children);
+  const children = Array.from(parentContainer.children);
   if (children.length < 2) {
     return null;
   }
@@ -384,12 +371,6 @@ function getLastVisibleChild(listingContainer) {
   // Find the last child that can be scrolled into view
   for (let i = children.length - 1; i >= 0; i--) {
     const child = children[i];
-
-    // Check if this child is similar to the first child
-    const areSimilar = areElementsSimilar(children[0], child);
-    if (!areSimilar) {
-      continue;
-    }
 
     // Check if child is completely outside viewport
     const isOutsideViewport = isElementCompletelyOutsideViewport(child);
@@ -411,7 +392,6 @@ window.scrollToNextView = scrollToNextView;
 window.getElementsInDOM = getElementsInDOM;
 window.getElementsInView = getElementsInView;
 window.generateCSSSelector = generateCSSSelector;
-window.areElementsSimilar = areElementsSimilar;
 window.isElementCompletelyOutsideViewport = isElementCompletelyOutsideViewport;
 window.canScrollIntoView = canScrollIntoView;
 window.getContainersWithTextSections = getContainersWithTextSections;
