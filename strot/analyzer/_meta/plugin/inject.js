@@ -132,40 +132,24 @@ function generateCSSSelector(element) {
 
       const testSelectorWithoutNth = pathWithoutNth.join(" > ");
 
-      console.log(
-        `Testing selector without nth-child: ${testSelectorWithoutNth}`,
-      );
-
       // Check if selector without nth-child matches multiple elements
       let needsNthChild = false;
       try {
         const foundElements = document.querySelectorAll(testSelectorWithoutNth);
-        console.log(
-          `Found ${foundElements.length} elements with selector: ${testSelectorWithoutNth}`,
-        );
 
         if (foundElements.length > 1) {
           needsNthChild = true;
-          console.log("Multiple elements found, nth-child needed");
-        } else if (foundElements.length === 1 && foundElements[0] === current) {
-          console.log(
-            "Single element found and it is current element, no nth-child needed",
-          );
         }
       } catch (error) {
         // If selector is invalid, we'll try with nth-child
         needsNthChild = true;
-        console.log("Selector error, nth-child needed:", error);
       }
 
       // Only add nth-child if the selector matches multiple elements
       if (needsNthChild) {
-        console.log("Adding nth-child...");
         // CSS nth-child counts ALL children, not just visible ones
         const siblings = Array.from(current.parentElement.children);
         const index = siblings.indexOf(current) + 1;
-
-        console.log(`Element is ${index} of ${siblings.length} siblings`);
 
         // Try with nth-child
         const selectorWithNth = selector + `:nth-child(${index})`;
@@ -180,24 +164,16 @@ function generateCSSSelector(element) {
 
         const testSelector = pathWithNth.join(" > ");
 
-        console.log(`Testing selector with nth-child: ${testSelector}`);
-
         // Check if selector with nth-child works and is unique
         try {
           const found = document.querySelector(testSelector);
           if (found === element) {
             selector = selectorWithNth;
-            console.log("nth-child selector works, using it");
-          } else {
-            console.log("nth-child selector does not match target element");
           }
           // If it doesn't work, keep selector without nth-child
         } catch (error) {
           // If selector is invalid, keep selector without nth-child
-          console.log("nth-child selector error:", error);
         }
-      } else {
-        console.log("No nth-child needed");
       }
     }
 
@@ -227,12 +203,6 @@ function areElementsSimilar(element1, element2) {
 
   // Same tag name
   if (element1.tagName !== element2.tagName) {
-    console.log(
-      "Different tag names:",
-      element1.tagName,
-      "vs",
-      element2.tagName,
-    );
     return false;
   }
 
@@ -244,29 +214,12 @@ function areElementsSimilar(element1, element2) {
   const attrNames1 = attrs1.map((attr) => attr.name).sort();
   const attrNames2 = attrs2.map((attr) => attr.name).sort();
 
-  console.log("Attributes 1:", attrNames1);
-  console.log("Attributes 2:", attrNames2);
-
   // Check if both elements have the same set of attribute names
   if (attrNames1.length !== attrNames2.length) {
-    console.log(
-      "Different number of attributes:",
-      attrNames1.length,
-      "vs",
-      attrNames2.length,
-    );
     return false;
   }
   for (let i = 0; i < attrNames1.length; i++) {
     if (attrNames1[i] !== attrNames2[i]) {
-      console.log(
-        "Different attribute names at index",
-        i,
-        ":",
-        attrNames1[i],
-        "vs",
-        attrNames2[i],
-      );
       return false;
     }
   }
@@ -275,8 +228,6 @@ function areElementsSimilar(element1, element2) {
   if (attrNames1.includes("class")) {
     const attrValue1 = element1.getAttribute("class");
     const attrValue2 = element2.getAttribute("class");
-
-    console.log(`Checking class attribute:`, attrValue1, "vs", attrValue2);
 
     const classList1 = attrValue1
       .trim()
@@ -288,8 +239,6 @@ function areElementsSimilar(element1, element2) {
       .split(/\s+/)
       .filter((c) => c)
       .sort();
-
-    console.log("Class lists:", classList1, "vs", classList2);
 
     // Find the shorter class list (assume it's the "base" structure)
     const shorterList =
@@ -303,8 +252,6 @@ function areElementsSimilar(element1, element2) {
       longerList.includes(cls),
     );
 
-    console.log("Has all core classes:", hasAllCoreClasses);
-
     if (!hasAllCoreClasses) return false;
 
     // Also check that they share at least 70% of classes in common
@@ -312,14 +259,10 @@ function areElementsSimilar(element1, element2) {
     const maxClasses = Math.max(classList1.length, classList2.length);
     const similarityRatio = commonClasses.length / maxClasses;
 
-    console.log("Class similarity ratio:", similarityRatio);
-
     if (similarityRatio < 0.7) return false;
   }
 
   // For all other attributes, we only check that they exist, not their values
-
-  console.log("Elements are similar");
   return true;
 }
 
