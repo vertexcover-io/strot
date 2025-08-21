@@ -232,11 +232,11 @@ def is_digit_value(value: Any) -> bool:
 
 
 def is_potential_cursor(value: str) -> bool:
-    return (
-        re.match(r"^[A-Za-z0-9_\-+:.=/]+$", value)
-        and len(value) >= 8
-        or re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", value)  # ISO datetime format
-    )
+    if re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", value):  # ISO datetime format
+        return True
+    if len(value) < 8:
+        return False
+    return bool(re.match(r"^[A-Za-z0-9_\-+:.=/]+$", value))
 
 
 def extract_potential_cursors(value: Any) -> list[str]:
