@@ -7,7 +7,7 @@ from json import dumps as json_dumps
 from typing import Any, cast
 from urllib.parse import parse_qsl, urlparse
 
-from patchright.async_api import Browser, Frame, Page
+from patchright.async_api import Browser, Page
 from patchright.async_api import Response as InterceptedResponse
 from pydantic import BaseModel
 
@@ -177,14 +177,14 @@ class _AnalyzerContext:
                 )
             )
 
-    async def handle_server_side_rendering(self, frame: Frame) -> None:
-        parsed_url = urlparse(frame.url)
+    async def handle_server_side_rendering(self, page: Page) -> None:
+        parsed_url = urlparse(page.url)
         if parsed_url.scheme.lower() not in ("http", "https"):
             return
 
         self._captured_responses.append(
             Response(
-                value=await self._page.content(),
+                value=await page.content(),
                 request=Request(
                     method="GET",
                     url=f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}",
