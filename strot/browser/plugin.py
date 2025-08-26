@@ -92,3 +92,6 @@ class Plugin:
 
     async def scroll_to_element(self, selector: str) -> None:
         await self._page.locator(selector).scroll_into_view_if_needed()
+
+    async def take_screenshot(self, type: Literal["png", "jpeg"] = "png") -> bytes:
+        return await self._page.screenshot(type=type)
