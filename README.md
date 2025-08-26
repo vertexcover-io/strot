@@ -37,7 +37,7 @@ Get the full Strot experience (Web UI + API) instantly:
 Using [Patchright](https://github.com/synacktra/patchright-headless-server) browser
 
 ```bash
-docker run -d -p 5678:5678 synacktra/patchright-headless-server
+docker run -d --name browser-server -p 5678:5678 synacktra/patchright-headless-server
 STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX \
   docker compose -f https://raw.githubusercontent.com/vertexcover-io/strot/refs/heads/main/docker-compose.yml up
 ```
@@ -132,7 +132,15 @@ if __name__ == "__main__":
 
 ## 🧪 Evaluation
 
-Test and validate Strot's analysis accuracy across different websites. The evaluation system can either evaluate existing analysis jobs or create new jobs and then evaluate them. In both cases, it waits until the job is completed (failed or ready) before performing the evaluation. It compares actual results against expected outcomes, tracking metrics like source URL matching, pagination key detection, and entity count accuracy. Every evaluated job is mapped to their analysis steps and are stored in Airtable.
+Test and validate Strot's analysis accuracy across different websites and individual components. The evaluation system supports five input types:
+
+- **existing jobs** (evaluate completed jobs by ID),
+- **new jobs** (create and evaluate full analysis tasks),
+- **request detection** (test URL and query combinations),
+- **pagination detection** (test individual request pagination analysis),
+- **code generation** (test response parsing with specific schemas).
+
+It compares actual results against expected outcomes, tracking metrics like source URL matching, pagination key detection, and entity count accuracy. All evaluations and their detailed analysis steps are stored in Airtable.
 
 ### Setup
 
@@ -162,9 +170,13 @@ cd strot && uv sync --group eval
    - Press `Create token` and copy the token (e.g. `patXXXXXXXXXXXXXX`)
 
 3. **Set environment variables:**
+
    ```bash
    export STROT_AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
    export STROT_AIRTABLE_TOKEN=patXXXXXXXXXXXXXX
+
+   # set the following if you wish to evaluate separate tasks
+   export STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX
    ```
 
 > **Note**: Required tables are automatically created with proper schema when you run evaluations.
@@ -175,14 +187,14 @@ cd strot && uv sync --group eval
 $ uv run stroteval
 Usage: stroteval [OPTIONS]
 
-Evaluate multiple (existing or new) jobs from a file or stdin.
+Evaluate multiple job-based or task-based inputs from a file or stdin.
 
 ╭─ Parameters ──────────────────────────────────────────────────────────────────╮
 │ --file  -f  Path to the JSON/JSONL file. If not provided, reads from stdin.   │
 ╰───────────────────────────────────────────────────────────────────────────────╯
 ```
 
-> Make sure the API server is running & Airtable is configured before running the evaluation.
+> Make sure the API server is running If you're evaluating job-based inputs.
 
 ```bash
 echo '[
@@ -194,10 +206,32 @@ echo '[
   },
   {
     "site_url": "https://example.com/category/abc",
-    "label": "products",
+    "query": "Listed products with name and prices",
     "expected_source": "https://api.example.com/products",
     "expected_pagination_keys": ["limit", "offset"],
     "expected_entity_count": 100
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://example.com/api/products",
+      "type": "ajax",
+      "queries": {"page": "2", "limit": "50"}
+    },
+    "expected_pagination_keys": ["page", "limit"]
+  },
+  {
+    "response": {
+      "value": "",
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/api/reviews",
+        "type": "ajax"
+      },
+      "preprocessor": {"element_selector": ".reviews-container"}
+    },
+    "output_schema_file": "review_schema.json",
+    "expected_entity_count": 10
   }
 ]' | uv run stroteval
 ```
