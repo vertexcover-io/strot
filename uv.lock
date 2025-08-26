@@ -541,6 +541,18 @@ wheels = [
 ]
 
 [[package]]
+name = "json-schema-to-pydantic"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f0/25/c9d8590a698a1cef53859b9a6ff32c79a758f16af4ab37118e4529503b2b/json_schema_to_pydantic-0.4.1.tar.gz", hash = "sha256:218df347563ce91d6214614310723db986e9de38f2bd0f683368a78fd0761a7a", size = 40975 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/65/54ac92e3d1346ff21bb7e5b15078046fea552517c2d5d0184e5643074f36/json_schema_to_pydantic-0.4.1-py3-none-any.whl", hash = "sha256:83ecc23c4f44ad013974bd9dfef6475097ea130dc83872d0152f93a953f56564", size = 12969 },
+]
+
+[[package]]
 name = "jsonref"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1505,7 +1517,7 @@ wheels = [
 
 [[package]]
 name = "strot"
-version = "0.1.4.post2.dev0+53db1e1"
+version = "1.1.0.post2.dev0+3082625"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1538,6 +1550,7 @@ dev = [
 ]
 eval = [
     { name = "cyclopts" },
+    { name = "json-schema-to-pydantic" },
     { name = "pyairtable" },
     { name = "pydantic-settings" },
 ]
@@ -1574,6 +1587,7 @@ dev = [
 ]
 eval = [
     { name = "cyclopts", specifier = ">=3.22.3" },
+    { name = "json-schema-to-pydantic", specifier = ">=0.4.1" },
     { name = "pyairtable", specifier = ">=3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
 ]

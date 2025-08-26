@@ -104,8 +104,8 @@ def parse_jsonl_logs(jsonl_content: str) -> ReportData:  # noqa: C901
         event_type = event.event or "unknown"
         action = event.action or ""
 
-        # Main analysis events
-        if event_type == "analysis":
+        # Main analysis events (support both old analysis and new request-detection events)
+        if event_type in ("analysis", "request-detection"):
             if action == "begin":
                 analysis_begin = event
                 url = event.url or ""
