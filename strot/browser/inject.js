@@ -265,7 +265,7 @@ function getContainersWithTextSections(sections) {
   const allElements = getElementsInDOM();
 
   // Normalize search sections once
-  const normalizedSections = sections.map((s) => s.replace(/\s+/g, " ").trim());
+  const normalizedSections = sections.map((s) => s.replace(/\s+/g, "").trim());
 
   // Find all potential container elements that contain all text sections
   const potentialContainers = allElements.filter((container) => {
@@ -277,7 +277,7 @@ function getContainersWithTextSections(sections) {
     }
 
     // Normalize whitespace for comparison
-    const containerText = container.textContent.replace(/\s+/g, " ").trim();
+    const containerText = container.textContent.replace(/\s+/g, "").trim();
 
     const containerTextLower = containerText.toLowerCase();
     const containsAllSections = normalizedSections.every(
@@ -294,10 +294,10 @@ function getContainersWithTextSections(sections) {
     // If no single container has all sections, try to find the parent of containers with individual sections
     // This handles cases where sections are from multiple items
     const containersBySection = sections.map((section) => {
-      const sectionLower = section.replace(/\s+/g, " ").trim().toLowerCase();
+      const sectionLower = section.replace(/\s+/g, "").trim().toLowerCase();
       return allElements.filter((el) => {
         if (el.tagName.toLowerCase() === "html") return false;
-        const text = el.textContent.replace(/\s+/g, " ").trim().toLowerCase();
+        const text = el.textContent.replace(/\s+/g, "").trim().toLowerCase();
         return text.includes(sectionLower) && text.length < 2000; // Focus on smaller containers
       });
     });
@@ -313,7 +313,7 @@ function getContainersWithTextSections(sections) {
         while (parent && parent !== document.body) {
           // Check if this parent contains most/all sections
           const parentText = parent.textContent
-            .replace(/\s+/g, " ")
+            .replace(/\s+/g, "")
             .trim()
             .toLowerCase();
           const sectionsInParent = normalizedSections.filter((section) =>
