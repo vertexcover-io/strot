@@ -55,6 +55,7 @@ dev-dependencies = [
 [dependency-groups]
 eval = [
     "cyclopts>=3.22.3",
+    "json-schema-to-pydantic>=0.4.1",
     "pyairtable>=3.0.0",
     "pydantic-settings>=2.10.1",
 ]

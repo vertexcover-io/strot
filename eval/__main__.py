@@ -5,7 +5,11 @@ from typing import Annotated
 
 from cyclopts import App, Parameter, validators
 
+from strot.logging import LogLevel, get_logger, setup_logging
+
 app = App(name="stroteval", help_flags=[], version_flags=[])
+
+setup_logging(overrides={"httpx": LogLevel.WARNING})
 
 
 @app.default
@@ -20,7 +24,7 @@ async def run(
     ] = None,
 ) -> None:
     """
-    Evaluate multiple (existing or new) jobs from a file or stdin.
+    Evaluate multiple job-based or task-based inputs from a file or stdin.
 
     Args:
         file: Path to the JSON/JSONL file. If not provided, reads from stdin.
@@ -39,10 +43,11 @@ async def run(
         lines = [line.strip() for line in content.strip().split("\n") if line.strip()]
         is_jsonl = len(lines) > 1 and all(line.startswith("{") for line in lines)
 
-    from eval.types import ExistingJobInput, NewJobInput
+    from eval.airtable import AirtableClient
+    from eval.inputs import InputUnion, JobBasedInput, TaskBasedInput
     from strot.type_adapter import TypeAdapter
 
-    inputs_adapter = TypeAdapter(list[ExistingJobInput | NewJobInput])
+    inputs_adapter = TypeAdapter(list[InputUnion])
 
     if is_jsonl:
         inputs = inputs_adapter.validate_python([
@@ -53,24 +58,29 @@ async def run(
 
     print(f"📋 Loaded {len(inputs)} evaluation inputs from {source_name}")
 
-    from eval.evaluator import Evaluator
+    from eval.evaluator import JobEvaluator, TaskEvaluator
 
-    evaluator = Evaluator()
+    logger = get_logger()
+    airtable_client = AirtableClient(logger=logger)
+    job_evaluator = JobEvaluator(airtable_client=airtable_client, logger=logger)
+    separate_evaluator = TaskEvaluator(airtable_client=airtable_client, logger=logger)
+
     for i, input_obj in enumerate(inputs, 1):
-        if isinstance(input_obj, NewJobInput):
-            job_type = "new job"
-            identifier = input_obj.site_url
+        if isinstance(input_obj, JobBasedInput):
+            evaluator = job_evaluator
+        elif isinstance(input_obj, TaskBasedInput):
+            evaluator = separate_evaluator
         else:
-            job_type = "existing job"
-            identifier = input_obj.job_id
+            print(f"❌ [{i}/{len(inputs)}] Unknown input type: {type(input_obj)}")
+            continue
 
-        print(f"🔄 [{i}/{len(inputs)}] Processing {job_type}: {identifier}")
+        print(f"🔄 [{i}/{len(inputs)}] Processing {input_obj.type}: {input_obj.identifier}")
 
         try:
             await evaluator.evaluate(input_obj)
-            print(f"✅ [{i}/{len(inputs)}] Completed: {identifier}")
+            print(f"✅ [{i}/{len(inputs)}] Completed {input_obj.type}: {input_obj.identifier}")
         except Exception as e:
-            print(f"❌ [{i}/{len(inputs)}] Failed: {identifier} - {e!s}")
+            print(f"❌ [{i}/{len(inputs)}] Failed {input_obj.type}: {input_obj.identifier} - {e!s}")
             continue
 
     print(f"🎉 Batch processing completed from {source_name}")
