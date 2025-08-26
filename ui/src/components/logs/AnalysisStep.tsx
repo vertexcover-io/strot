@@ -205,6 +205,44 @@ export function AnalysisStep({ step }: AnalysisStepProps) {
               </div>
             </div>
           )}
+
+          {step.request_type && (
+            <div>
+              <span className="text-sm font-medium text-gray-700">
+                Request Type:
+              </span>
+              <div className="text-sm text-gray-900 mt-1 bg-gray-50 p-2 rounded">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium ${
+                    step.request_type === "ajax"
+                      ? "bg-blue-100 text-blue-800"
+                      : step.request_type === "ssr"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-gray-100 text-gray-800"
+                  }`}
+                >
+                  {step.request_type.toUpperCase()}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {step.response_preprocessor && (
+            <div>
+              <span className="text-sm font-medium text-gray-700">
+                Response Preprocessor:
+              </span>
+              <div className="mt-2">
+                <CodeBlock
+                  title="preprocessor_config.json"
+                  language="json"
+                  maxHeight="max-h-32"
+                >
+                  {JSON.stringify(step.response_preprocessor, null, 2)}
+                </CodeBlock>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

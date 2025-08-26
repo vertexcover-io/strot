@@ -37,6 +37,9 @@ export interface AnalysisStep {
   data?: string | Record<string, unknown> | null;
   reason?: string;
   sub_events: LogEvent[];
+  // Additional fields from new request-detection events
+  request_type?: string;
+  response_preprocessor?: Record<string, unknown>;
 }
 
 export interface PaginationDetection {
@@ -52,6 +55,10 @@ export interface CodeGeneration {
   code?: string;
   reason?: string;
   llm_completion?: LogEvent;
+  // Additional fields from new code-generation events
+  default_limit?: number;
+  response_length?: number;
+  preprocessor?: Record<string, unknown>;
 }
 
 export interface ReportData {
@@ -123,7 +130,7 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
     const eventType = event.event || "unknown";
     const action = event.action || "";
 
-    // Main analysis events
+    // Main analysis events (support both old analysis and new request-detection events)
     if (eventType === "analysis") {
       if (action === "begin") {
         analysis_begin = event;
@@ -152,10 +159,20 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
             current_step.queries = event.queries;
             current_step.data = event.data;
             current_step.reason = event.reason;
+            // Capture additional fields from new request-detection events
+            if (eventType === "request-detection" && event.request_type) {
+              Object.assign(current_step, {
+                request_type: event.request_type,
+                response_preprocessor: event.response_preprocessor,
+              });
+            }
           }
           current_step = null; // Close the current step
         }
-      } else if (action === "detect-pagination") {
+      } else if (
+        action === "detect-pagination" ||
+        action === "pagination-detection"
+      ) {
         const status = event.status || "";
         if (status === "pending") {
           current_pagination = {
@@ -178,19 +195,55 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
       } else if (action === "code-generation") {
         const status = event.status || "";
         if (status === "pending") {
-          current_code_gen = {
-            status: "pending",
-          };
-        } else if (status === "success" || status === "failed") {
+          // Only create new code generation if we don't already have one pending
           if (!current_code_gen) {
-            current_code_gen = { status: "pending" };
+            current_code_gen = {
+              status: "pending",
+            };
           }
-          current_code_gen.status = status;
-          current_code_gen.code = event.code;
-          current_code_gen.reason = event.reason;
-          code_generations.push(current_code_gen);
-          current_code_gen = null;
+        } else if (status === "success" || status === "failed") {
+          // Only finalize if we have a current code generation and it has actual content
+          if (current_code_gen && (event.code || current_code_gen.code)) {
+            current_code_gen.status = status;
+            if (event.code) {
+              current_code_gen.code = event.code;
+            }
+            if (event.reason) {
+              current_code_gen.reason = event.reason;
+            }
+            code_generations.push(current_code_gen);
+            current_code_gen = null;
+          }
         }
+      }
+    }
+
+    // New request-detection events (individual steps from new Analyzer)
+    else if (eventType === "request-detection" && action === "run-step") {
+      const step_count = event.step_count || 0;
+      const status = event.status || "";
+
+      if (status === "pending") {
+        // Start a new step
+        current_step = {
+          step_count,
+          status: "pending",
+          sub_events: [],
+        };
+        analysis_steps.push(current_step);
+      } else if (status === "success" || status === "failed") {
+        // Update the current step with final status
+        if (current_step && current_step.step_count === step_count) {
+          current_step.status = status;
+          current_step.method = event.method;
+          current_step.url = event.url;
+          current_step.queries = event.queries;
+          current_step.data = event.data;
+          current_step.reason = event.reason;
+          current_step.request_type = event.request_type;
+          current_step.response_preprocessor = event.response_preprocessor;
+        }
+        current_step = null; // Close the current step
       }
     }
 
@@ -201,13 +254,26 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         timestamp: event.timestamp,
       });
     } else if (
-      eventType === "detect-pagination" &&
+      (eventType === "detect-pagination" ||
+        eventType === "pagination-detection") &&
       action === "llm-completion" &&
       current_pagination
     ) {
       if (event.status !== "pending") {
         current_pagination.llm_calls.push(event);
       }
+    } else if (
+      eventType === "pagination-detection" &&
+      current_pagination &&
+      event.status === "success"
+    ) {
+      // Handle direct pagination-detection success events from new Analyzer
+      current_pagination.status = event.status;
+      current_pagination.strategy = event.strategy;
+      current_pagination.potential_pagination_parameters =
+        event.parameters || event.potential_pagination_parameters;
+      pagination_detections.push(current_pagination);
+      current_pagination = null;
     } else if (
       eventType === "code-generation" &&
       action === "llm-completion" &&
@@ -217,6 +283,46 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         current_code_gen = { status: "pending" };
       }
       current_code_gen.llm_completion = event;
+    } else if (eventType === "code-generation") {
+      // Handle direct code-generation events from individual methods
+      const status = event.status || "";
+
+      if (status === "pending") {
+        // Create or update current code generation with input parameters
+        if (!current_code_gen) {
+          current_code_gen = { status: "pending" };
+        }
+        // Capture input parameters
+        if (event.response_length !== undefined) {
+          current_code_gen.response_length = event.response_length;
+        }
+        if (event.preprocessor) {
+          current_code_gen.preprocessor = event.preprocessor;
+        }
+      } else if (status === "success" || status === "failed") {
+        // Ensure we have a code generation to update
+        if (!current_code_gen) {
+          current_code_gen = { status: "pending" };
+        }
+        current_code_gen.status = status;
+
+        // Capture output data
+        if (event.code) {
+          current_code_gen.code = event.code;
+        }
+        if (event.default_limit !== undefined) {
+          current_code_gen.default_limit = event.default_limit;
+        }
+        if (event.reason) {
+          current_code_gen.reason = event.reason;
+        }
+
+        // Only add to final list if we have meaningful content
+        if (current_code_gen.code || current_code_gen.reason) {
+          code_generations.push(current_code_gen);
+        }
+        current_code_gen = null;
+      }
     }
   }
 
