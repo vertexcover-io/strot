@@ -66,7 +66,40 @@ export function CodeGeneration({
         </div>
       </div>
 
-      {/* 1. LLM Analysis */}
+      {/* 1. Input Information */}
+      {(generation.response_length !== undefined ||
+        generation.preprocessor) && (
+        <div className="mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {generation.response_length !== undefined && (
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="text-xs font-medium text-gray-600 mb-1">
+                  Response Length
+                </div>
+                <div className="text-lg font-bold text-gray-900">
+                  {generation.response_length.toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-600">
+                  characters processed
+                </div>
+              </div>
+            )}
+
+            {generation.preprocessor && (
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="text-xs font-medium text-gray-600 mb-1">
+                  Preprocessor Configuration
+                </div>
+                <div className="text-xs text-gray-900 font-mono max-h-20 overflow-y-auto">
+                  {JSON.stringify(generation.preprocessor, null, 2)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2. LLM Analysis */}
       {generation.llm_completion && (
         <div className="mb-6">
           <h4 className="text-sm font-semibold text-gray-800 mb-3">
@@ -76,11 +109,16 @@ export function CodeGeneration({
         </div>
       )}
 
-      {/* 2. Generated Code */}
+      {/* 3. Generated Code */}
       {generation.code && (
         <div className="mb-6">
           <h4 className="text-sm font-semibold text-gray-800 mb-3">
             Generated Python Code
+            {generation.default_limit !== undefined && (
+              <span className="ml-2 text-sm font-normal text-blue-600">
+                (Default limit: {generation.default_limit})
+              </span>
+            )}
           </h4>
           <CodeBlock
             title="extraction_code.py"
@@ -93,7 +131,7 @@ export function CodeGeneration({
         </div>
       )}
 
-      {/* 3. Result/Error Information */}
+      {/* 4. Result/Error Information */}
       <div className="space-y-4">
         {generation.reason && (
           <div>
