@@ -61,6 +61,7 @@ class Tab:
             with contextlib.suppress(Exception):
                 await self._page.close()
             self._page = None
+            self._page_headers = None
             self._plugin = None
             self._responses.clear()
 
