@@ -312,32 +312,28 @@ class TaskEvaluator:
         run_id = str(uuid4())
         self._logger.info("evaluate-request-detection", run_id=run_id, status="pending")
 
-        initiated_at = datetime.now().isoformat()
-
-        # Run request detection
-        actual_source = await get_source_url(
-            self._analyzer,
-            url=input.site_url,
-            query=input.query,
-        )
-
-        # Calculate matching
-        source_matching = "no"
-        if input.expected_source and actual_source:
-            source_matching = "yes" if input.expected_source.strip() == actual_source.strip() else "no"
-
-        # Create Airtable record
         record = {
             schema.RequestDetectionAirtableSchema.run_id["name"]: run_id,
-            schema.RequestDetectionAirtableSchema.initiated_at["name"]: initiated_at,
-            schema.RequestDetectionAirtableSchema.completed_at["name"]: datetime.now().isoformat(),
+            schema.RequestDetectionAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
             schema.RequestDetectionAirtableSchema.site_url["name"]: input.site_url,
             schema.RequestDetectionAirtableSchema.query["name"]: input.query,
             schema.RequestDetectionAirtableSchema.expected_source["name"]: input.expected_source,
-            schema.RequestDetectionAirtableSchema.actual_source["name"]: actual_source or "",
-            schema.RequestDetectionAirtableSchema.source_matching["name"]: source_matching,
             schema.RequestDetectionAirtableSchema.comment["name"]: "",
         }
+
+        try:
+            actual_source = await get_source_url(self._analyzer, url=input.site_url, query=input.query)
+        except Exception as e:
+            actual_source = None
+            record[schema.RequestDetectionAirtableSchema.comment["name"]] = str(e)
+
+        source_matching = "no"
+        if input.expected_source and actual_source is not None:
+            source_matching = "yes" if input.expected_source.strip() == actual_source.strip() else "no"
+
+        record[schema.RequestDetectionAirtableSchema.actual_source["name"]] = actual_source or ""
+        record[schema.RequestDetectionAirtableSchema.source_matching["name"]] = source_matching
+        record[schema.RequestDetectionAirtableSchema.completed_at["name"]] = datetime.now().isoformat()
 
         request_detection_table.create(record)
         self._logger.info("evaluate-request-detection", run_id=run_id, status="completed", match=source_matching)
@@ -350,34 +346,31 @@ class TaskEvaluator:
         run_id = str(uuid4())
         self._logger.info("evaluate-pagination-detection", run_id=run_id, status="pending")
 
-        initiated_at = datetime.now().isoformat()
-
-        # Run pagination detection
-        actual_keys = await get_pagination_keys(
-            self._analyzer,
-            request=input.request,
-        )
-
-        # Calculate matching using set comparison
-        pagination_keys_matching = "no"
-        if input.expected_pagination_keys and actual_keys:
-            expected_set = set(input.expected_pagination_keys)
-            actual_set = set(actual_keys)
-            pagination_keys_matching = "yes" if expected_set == actual_set else "no"
-
-        # Create Airtable record
         record = {
             schema.PaginationDetectionAirtableSchema.run_id["name"]: run_id,
-            schema.PaginationDetectionAirtableSchema.initiated_at["name"]: initiated_at,
-            schema.PaginationDetectionAirtableSchema.completed_at["name"]: datetime.now().isoformat(),
+            schema.PaginationDetectionAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
             schema.PaginationDetectionAirtableSchema.request["name"]: input.request.model_dump_json(indent=2),
             schema.PaginationDetectionAirtableSchema.expected_pagination_keys["name"]: json.dumps(
                 input.expected_pagination_keys
             ),
-            schema.PaginationDetectionAirtableSchema.actual_pagination_keys["name"]: json.dumps(actual_keys),
-            schema.PaginationDetectionAirtableSchema.pagination_keys_matching["name"]: pagination_keys_matching,
             schema.PaginationDetectionAirtableSchema.comment["name"]: "",
         }
+
+        try:
+            actual_keys = await get_pagination_keys(self._analyzer, request=input.request)
+        except Exception as e:
+            actual_keys = None
+            record[schema.PaginationDetectionAirtableSchema.comment["name"]] = str(e)
+
+        pagination_keys_matching = "no"
+        if input.expected_pagination_keys and actual_keys is not None:
+            expected_set = set(input.expected_pagination_keys)
+            actual_set = set(actual_keys)
+            pagination_keys_matching = "yes" if expected_set == actual_set else "no"
+
+        record[schema.PaginationDetectionAirtableSchema.actual_pagination_keys["name"]] = json.dumps(actual_keys)
+        record[schema.PaginationDetectionAirtableSchema.pagination_keys_matching["name"]] = pagination_keys_matching
+        record[schema.PaginationDetectionAirtableSchema.completed_at["name"]] = datetime.now().isoformat()
 
         pagination_detection_table.create(record)
         self._logger.info(
@@ -387,57 +380,50 @@ class TaskEvaluator:
     async def evaluate_code_generation(self, input: inputs.CodeGenerationInput) -> None:
         """Evaluate code generation for given input."""
 
+        output_schema = create_model(json.loads(input.output_schema_file.read_text()))
         code_generation_table = await self._airtable_client.get_code_generation_table()
 
         run_id = str(uuid4())
         self._logger.info("evaluate-code-generation", run_id=run_id, status="pending")
 
-        initiated_at = datetime.now().isoformat()
-
-        # Load output schema from file
-        output_schema = create_model(json.loads(input.output_schema_file.read_text()))
-
-        # Run code generation
-        try:
-            actual_count = await get_entity_count(
-                self._analyzer,
-                response=input.response,
-                output_schema=output_schema,
-            )
-            if actual_count is None:
-                actual_count = 0
-                generation_successful = "no"
-            else:
-                generation_successful = "yes"
-        except Exception:
-            actual_count = 0
-            generation_successful = "no"
-
-        # Calculate entity count difference
-        if input.expected_entity_count == 0:
-            entity_count_difference = 100.00 if actual_count > 0 else 0.00
-        else:
-            difference = abs(input.expected_entity_count - actual_count)
-            entity_count_difference = (difference / input.expected_entity_count) * 100
-            entity_count_difference = round(entity_count_difference, 2)
-
-        # Create Airtable record
         record = {
             schema.CodeGenerationAirtableSchema.run_id["name"]: run_id,
-            schema.CodeGenerationAirtableSchema.initiated_at["name"]: initiated_at,
-            schema.CodeGenerationAirtableSchema.completed_at["name"]: datetime.now().isoformat(),
+            schema.CodeGenerationAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
             schema.CodeGenerationAirtableSchema.response["name"]: input.response.model_dump_json(
                 indent=2, exclude={"value"}
             ),
             schema.CodeGenerationAirtableSchema.expected_entity_count["name"]: input.expected_entity_count,
-            schema.CodeGenerationAirtableSchema.actual_entity_count["name"]: actual_count,
-            schema.CodeGenerationAirtableSchema.entity_count_difference["name"]: entity_count_difference,
-            schema.CodeGenerationAirtableSchema.generation_successful["name"]: generation_successful,
             schema.CodeGenerationAirtableSchema.comment["name"]: "",
         }
 
+        try:
+            actual_entity_count = await get_entity_count(
+                self._analyzer, response=input.response, output_schema=output_schema
+            )
+            generation_successful = "yes"
+        except Exception as e:
+            actual_entity_count = None
+            generation_successful = "no"
+            record[schema.CodeGenerationAirtableSchema.comment["name"]] = str(e)
+
+        entity_count_difference = 0.0
+        if input.expected_entity_count and actual_entity_count is not None:
+            difference = abs(input.expected_entity_count - actual_entity_count)
+            entity_count_difference = (difference / input.expected_entity_count) * 100
+            entity_count_difference = round(entity_count_difference, 2)
+
+        record[schema.CodeGenerationAirtableSchema.actual_entity_count["name"]] = actual_entity_count
+        record[schema.CodeGenerationAirtableSchema.entity_count_difference["name"]] = entity_count_difference
+        record[schema.CodeGenerationAirtableSchema.generation_successful["name"]] = generation_successful
+
         code_generation_table.create(record)
-        self._logger.info("evaluate-code-generation", run_id=run_id, status="completed", success=generation_successful)
+        self._logger.info(
+            "evaluate-code-generation",
+            run_id=run_id,
+            status="completed",
+            success=generation_successful,
+            difference=entity_count_difference,
+        )
 
     async def evaluate(
         self, input: inputs.RequestDetectionInput | inputs.PaginationDetectionInput | inputs.CodeGenerationInput
