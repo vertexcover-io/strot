@@ -460,7 +460,7 @@ async def get_source_url(
     url: str,
     query: str,
 ):
-    async with launch_browser(env_settings.BROWSER_MODE_OR_WS_URL) as browser:
+    async with launch_browser(str(env_settings.BROWSER_MODE_OR_WS_URL)) as browser:
         browser_ctx = await browser.new_context(bypass_csp=True)
         tab = Tab(browser_ctx)
         try:
