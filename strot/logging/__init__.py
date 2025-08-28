@@ -126,7 +126,7 @@ class ConsoleFormatter(logging.Formatter):
         except json.JSONDecodeError:
             data = {"message": record.getMessage()}
 
-        message_parts = [data.pop("level", record.levelname).upper(), f"event={data.pop("event", "unknown")!r}"]
+        message_parts = [data.pop("level", record.levelname).upper(), f'event={data.pop("event", "unknown")!r}']
         for k, v in data.items():
             if v is None:
                 continue
@@ -138,7 +138,8 @@ class ConsoleFormatter(logging.Formatter):
                 message_parts.append(f"{k}={v:.2f}")
             elif isinstance(v, str):
                 if "\n" in v:
-                    message_parts.append(f"{k}='''\n{v.strip("\n")}\n'''")
+                    v = v.strip("\n")
+                    message_parts.append(f"{k}='''\n{v}\n'''")
                     continue
                 try:
                     if Image.open(io.BytesIO(base64.b64decode(v))).format:
