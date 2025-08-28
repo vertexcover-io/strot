@@ -1,4 +1,9 @@
+from typing import Annotated, Literal
+
+from pydantic import UrlConstraints
 from pydantic_settings import BaseSettings
+
+WebSocketUrl = Annotated[str, UrlConstraints(allowed_schemes={"ws", "wss"})]
 
 
 class EnvSettings(BaseSettings):
@@ -9,8 +14,8 @@ class EnvSettings(BaseSettings):
     """Base URL for the strot API"""
 
     # Local evaluation configuration
-    BROWSER_MODE_OR_WS_URL: str = "headed"
-    """Browser mode or WebSocket URL"""
+    BROWSER_MODE_OR_WS_URL: Literal["headed", "headless"] | WebSocketUrl = "headed"
+    """Either 'headed' | 'headless' or a ws://|wss:// WebSocket URL"""
 
     # AWS S3 Configuration
     AWS_ACCESS_KEY_ID: str = "strot-user"
