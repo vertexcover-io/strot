@@ -16,13 +16,19 @@ class BaseInput(BaseModel):
         raise NotImplementedError
 
 
-class _CommonJobInput(BaseInput):
+class ExpectedSource(BaseModel):
     expected_source: str = Field(..., description="Expected source URL")
+
+
+class ExpectedPaginationKeys(BaseModel):
     expected_pagination_keys: list[str] = Field(default_factory=list, description="Expected pagination keys")
-    expected_entity_count: int = Field(0, description="Expected entity count")
 
 
-class ExistingJobInput(_CommonJobInput):
+class ExpectedEntityCount(BaseModel):
+    expected_entity_count: int = Field(..., gt=0, description="Expected entity count")
+
+
+class ExistingJobInput(BaseInput, ExpectedSource, ExpectedPaginationKeys, ExpectedEntityCount):
     job_id: str = Field(..., description="Job ID")
 
     @property
@@ -34,7 +40,7 @@ class ExistingJobInput(_CommonJobInput):
         return "existing job"
 
 
-class NewJobInput(_CommonJobInput):
+class NewJobInput(BaseInput, ExpectedSource, ExpectedPaginationKeys, ExpectedEntityCount):
     site_url: str = Field(..., description="Site URL")
     label: str = Field(..., description="Label")
 
@@ -47,10 +53,9 @@ class NewJobInput(_CommonJobInput):
         return "new job"
 
 
-class RequestDetectionInput(BaseInput):
+class RequestDetectionInput(BaseInput, ExpectedSource):
     site_url: str = Field(..., description="Site URL")
     query: str = Field(..., description="Query")
-    expected_source: str = Field(..., description="Expected source URL")
 
     @property
     def identifier(self) -> str:
@@ -61,9 +66,8 @@ class RequestDetectionInput(BaseInput):
         return "request detection"
 
 
-class PaginationDetectionInput(BaseInput):
+class PaginationDetectionInput(BaseInput, ExpectedPaginationKeys):
     request: Request
-    expected_pagination_keys: list[str] = Field(default_factory=list, description="Expected pagination keys")
 
     @property
     def identifier(self) -> str:
@@ -74,10 +78,9 @@ class PaginationDetectionInput(BaseInput):
         return "pagination detection"
 
 
-class CodeGenerationInput(BaseInput):
+class CodeGenerationInput(BaseInput, ExpectedEntityCount):
     response: Response
     output_schema_file: Path
-    expected_entity_count: int = Field(0, description="Expected entity count")
 
     @property
     def identifier(self) -> str:
