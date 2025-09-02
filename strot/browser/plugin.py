@@ -3,8 +3,8 @@ from typing import Any, Literal
 
 from patchright.async_api import Page
 
-from strot.analyzer.schema import Point
-from strot.analyzer.utils import text_match_ratio
+from strot.schema.point import Point
+from strot.utils.text import text_match_ratio
 
 __all__ = ("Plugin",)
 
