@@ -31,6 +31,15 @@ class LogEvent:
     code: str | None = None
     strategy: str | None = None
     potential_pagination_parameters: dict[str, Any] | None = None
+    # New unified parameter detection fields (inputs/outputs)
+    request: dict[str, Any] | None = None
+    pagination_keys: dict[str, Any] | None = None
+    dynamic_parameter_keys: list[str] | None = None
+    apply_parameters_code: str | None = None
+    # New structured extraction fields (inputs/outputs)
+    response_length: int | None = None
+    preprocessor: dict[str, Any] | None = None
+    default_entity_count: int | None = None
 
 
 @dataclass
@@ -66,7 +75,7 @@ def parse_jsonl_logs(jsonl_content: str) -> ReportData:  # noqa: C901
     """Parse JSONL log content and extract structured data."""
     lines = [line.strip() for line in jsonl_content.strip().split("\n") if line.strip()]
 
-    events = []
+    events: list[LogEvent] = []
 
     # Parse JSONL content
     for line in lines:
@@ -95,7 +104,7 @@ def parse_jsonl_logs(jsonl_content: str) -> ReportData:  # noqa: C901
     query = ""
     analysis_begin = None
     analysis_end = None
-    analysis_steps = []
+    analysis_steps: list[AnalysisStep] = []
 
     current_step = None
 
@@ -104,7 +113,7 @@ def parse_jsonl_logs(jsonl_content: str) -> ReportData:  # noqa: C901
         event_type = event.event or "unknown"
         action = event.action or ""
 
-        # Main analysis events (support both old analysis and new request-detection events)
+        # Main analysis events (support old analysis & request-detection)
         if event_type in ("analysis", "request-detection"):
             if action == "begin":
                 analysis_begin = event

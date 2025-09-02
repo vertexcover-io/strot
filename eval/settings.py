@@ -38,11 +38,11 @@ class EnvSettings(BaseSettings):
     AIRTABLE_REQUEST_DETECTION_TABLE: str = "request_detection_eval"
     """Name of the request detection evaluation table in Airtable"""
 
-    AIRTABLE_PAGINATION_DETECTION_TABLE: str = "pagination_detection_eval"
-    """Name of the pagination detection evaluation table in Airtable"""
+    AIRTABLE_PARAMETER_DETECTION_TABLE: str = "parameter_detection_eval"
+    """Name of the parameter detection evaluation table in Airtable"""
 
-    AIRTABLE_CODE_GENERATION_TABLE: str = "code_generation_eval"
-    """Name of the code generation evaluation table in Airtable"""
+    AIRTABLE_STRUCTURED_EXTRACTION_TABLE: str = "structured_extraction_eval"
+    """Name of the structured extraction evaluation table in Airtable"""
 
 
 env_settings = EnvSettings()

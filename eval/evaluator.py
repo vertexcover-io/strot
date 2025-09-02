@@ -13,11 +13,14 @@ from pyairtable.api.types import RecordDict
 from pydantic import BaseModel
 
 from strot.analyzer import Analyzer
-from strot.analyzer.schema import Response
-from strot.analyzer.schema.request import Request
 from strot.browser import launch_browser
 from strot.browser.tab import Tab
 from strot.logging import LoggerType, get_logger
+from strot.schema.request import Request
+from strot.schema.request.detail import RequestDetail
+from strot.schema.response import Response
+from strot.schema.source import OldSource, Source
+from strot.type_adapter import TypeAdapter
 
 from . import inputs
 from .airtable import schema
@@ -130,6 +133,7 @@ class JobEvaluator:
         job_response: dict[str, Any],
         expected_source: str,
         expected_pagination_keys: list[str],
+        expected_dynamic_keys: list[str],
         expected_entity_count: int,
         analysis_step_ids: list[str],
     ) -> dict[str, Any]:
@@ -146,6 +150,7 @@ class JobEvaluator:
             schema.EvaluationMetricsAirtableSchema.pagination_keys_expected["name"]: json.dumps(
                 expected_pagination_keys
             ),
+            schema.EvaluationMetricsAirtableSchema.dynamic_keys_expected["name"]: json.dumps(expected_dynamic_keys),
             schema.EvaluationMetricsAirtableSchema.entity_count_expected["name"]: expected_entity_count,
         }
 
@@ -156,21 +161,18 @@ class JobEvaluator:
                 schema.EvaluationMetricsAirtableSchema.source_matching["name"]: "no",
                 schema.EvaluationMetricsAirtableSchema.pagination_keys_actual["name"]: "[]",
                 schema.EvaluationMetricsAirtableSchema.pagination_keys_matching["name"]: "no",
+                schema.EvaluationMetricsAirtableSchema.dynamic_keys_actual["name"]: "[]",
+                schema.EvaluationMetricsAirtableSchema.dynamic_keys_matching["name"]: "no",
                 schema.EvaluationMetricsAirtableSchema.entity_count_actual["name"]: 0,
                 schema.EvaluationMetricsAirtableSchema.entity_count_difference["name"]: 100.00,
             })
 
         else:
-            source_actual = source["request"]["url"]
+            source_instance = TypeAdapter(Source | OldSource).validate_python(source)
+            if isinstance(source_instance, OldSource):
+                source_instance = source_instance.as_new_source()
 
-            pagination_strategy = source.get("pagination_strategy") or {}
-            pagination_keys_actual = [v["key"] for v in pagination_strategy.values() if v]
-
-            try:
-                entities = await self._client.fetch_data(job_id, limit=expected_entity_count, offset=0)
-                entity_count_actual = len(entities)
-            except Exception:
-                entity_count_actual = 0
+            source_actual = source_instance.request_detail.request.url
 
             source_matching = "no"
             if expected_source and source_actual:
@@ -185,20 +187,41 @@ class JobEvaluator:
                 match=source_matching,
             )
 
+            pagination_keys_actual = []
+            if source_instance.request_detail.pagination_info:
+                pagination_keys_actual = source_instance.request_detail.pagination_info.keys
+
+            dynamic_keys_actual = source_instance.request_detail.dynamic_parameter_keys
+
             pagination_keys_matching = "no"
             if expected_pagination_keys and pagination_keys_actual:
                 expected_set = set(expected_pagination_keys)
                 actual_set = set(pagination_keys_actual)
                 pagination_keys_matching = "yes" if expected_set == actual_set else "no"
 
+            dynamic_keys_matching = "no"
+            if expected_dynamic_keys and dynamic_keys_actual:
+                expected_set = set(expected_dynamic_keys)
+                actual_set = set(dynamic_keys_actual)
+                dynamic_keys_matching = "yes" if expected_set == actual_set else "no"
+
             self._logger.info(
                 "prepare-metric",
                 job_id=job_id,
-                action="compare-pagination-keys",
-                expected=expected_pagination_keys,
-                actual=pagination_keys_actual,
-                match=pagination_keys_matching,
+                action="compare-parameter-keys",
+                expected_pagination_keys=expected_pagination_keys,
+                actual_pagination_keys=pagination_keys_actual,
+                pagination_keys_matching=pagination_keys_matching,
+                expected_dynamic_keys=expected_dynamic_keys,
+                actual_dynamic_keys=dynamic_keys_actual,
+                dynamic_keys_matching=dynamic_keys_matching,
             )
+
+            try:
+                entities = await self._client.fetch_data(job_id, limit=expected_entity_count, offset=0)
+                entity_count_actual = len(entities)
+            except Exception:
+                entity_count_actual = 0
 
             if expected_entity_count == 0:
                 entity_count_difference = 100.00 if entity_count_actual > 0 else 0.00
@@ -223,6 +246,8 @@ class JobEvaluator:
                     pagination_keys_actual
                 ),
                 schema.EvaluationMetricsAirtableSchema.pagination_keys_matching["name"]: pagination_keys_matching,
+                schema.EvaluationMetricsAirtableSchema.dynamic_keys_actual["name"]: json.dumps(dynamic_keys_actual),
+                schema.EvaluationMetricsAirtableSchema.dynamic_keys_matching["name"]: dynamic_keys_matching,
                 schema.EvaluationMetricsAirtableSchema.entity_count_actual["name"]: entity_count_actual,
                 schema.EvaluationMetricsAirtableSchema.entity_count_difference["name"]: entity_count_difference,
             })
@@ -248,7 +273,7 @@ class JobEvaluator:
         self._logger.info("create-metric", **log_kwargs, status="completed", record_id=record["id"])
         return record
 
-    async def evaluate(self, input: inputs.ExistingJobInput | inputs.NewJobInput) -> None:
+    async def evaluate(self, input: inputs.JobBasedInput) -> None:
         """Evaluate the analysis job."""
 
         if isinstance(input, inputs.NewJobInput):
@@ -279,6 +304,7 @@ class JobEvaluator:
                 job_response,
                 input.expected_source,
                 input.expected_pagination_keys,
+                input.expected_dynamic_keys,
                 input.expected_entity_count,
                 [record["id"] for record in analysis_step_records],
             )
@@ -338,62 +364,94 @@ class TaskEvaluator:
         request_detection_table.create(record)
         self._logger.info("evaluate-request-detection", run_id=run_id, status="completed", match=source_matching)
 
-    async def evaluate_pagination_detection(self, input: inputs.PaginationDetectionInput) -> None:
-        """Evaluate pagination detection for given input."""
+    async def evaluate_parameter_detection(self, input: inputs.ParameterDetectionInput) -> None:
+        """Evaluate parameter detection for given input."""
 
-        pagination_detection_table = await self._airtable_client.get_pagination_detection_table()
+        parameter_detection_table = await self._airtable_client.get_parameter_detection_table()
 
         run_id = str(uuid4())
-        self._logger.info("evaluate-pagination-detection", run_id=run_id, status="pending")
+        self._logger.info("evaluate-parameter-detection", run_id=run_id, status="pending")
 
         record = {
-            schema.PaginationDetectionAirtableSchema.run_id["name"]: run_id,
-            schema.PaginationDetectionAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
-            schema.PaginationDetectionAirtableSchema.request["name"]: input.request.model_dump_json(indent=2),
-            schema.PaginationDetectionAirtableSchema.expected_pagination_keys["name"]: json.dumps(
+            schema.ParameterDetectionAirtableSchema.run_id["name"]: run_id,
+            schema.ParameterDetectionAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
+            schema.ParameterDetectionAirtableSchema.request["name"]: input.request.model_dump_json(indent=2),
+            schema.ParameterDetectionAirtableSchema.expected_pagination_keys["name"]: json.dumps(
                 input.expected_pagination_keys
             ),
-            schema.PaginationDetectionAirtableSchema.comment["name"]: "",
+            schema.ParameterDetectionAirtableSchema.expected_dynamic_keys["name"]: json.dumps(
+                input.expected_dynamic_keys
+            ),
+            schema.ParameterDetectionAirtableSchema.comment["name"]: "",
         }
 
         try:
-            actual_keys = await get_pagination_keys(self._analyzer, request=input.request)
+            pagination_keys, dynamic_keys = await get_pagination_and_dynamic_parameter_keys(
+                self._analyzer, request=input.request
+            )
+
+            # Evaluate pagination keys separately
+            pagination_matching = "no"
+            if input.expected_pagination_keys and pagination_keys:
+                expected_set = set(input.expected_pagination_keys)
+                actual_set = set(pagination_keys)
+                pagination_matching = "yes" if expected_set == actual_set else "no"
+            elif not input.expected_pagination_keys and not pagination_keys:
+                pagination_matching = "yes"  # Both empty
+
+            # Evaluate dynamic keys separately
+            dynamic_matching = "no"
+            if input.expected_dynamic_keys and dynamic_keys:
+                expected_set = set(input.expected_dynamic_keys)
+                actual_set = set(dynamic_keys)
+                dynamic_matching = "yes" if expected_set == actual_set else "no"
+            elif not input.expected_dynamic_keys and not dynamic_keys:
+                dynamic_matching = "yes"  # Both empty
+
+            record.update({
+                schema.ParameterDetectionAirtableSchema.actual_pagination_keys["name"]: json.dumps(pagination_keys),
+                schema.ParameterDetectionAirtableSchema.pagination_keys_matching["name"]: pagination_matching,
+                schema.ParameterDetectionAirtableSchema.actual_dynamic_keys["name"]: json.dumps(dynamic_keys),
+                schema.ParameterDetectionAirtableSchema.dynamic_keys_matching["name"]: dynamic_matching,
+            })
+
         except Exception as e:
-            actual_keys = None
-            record[schema.PaginationDetectionAirtableSchema.comment["name"]] = str(e)
+            record.update({
+                schema.ParameterDetectionAirtableSchema.actual_pagination_keys["name"]: json.dumps([]),
+                schema.ParameterDetectionAirtableSchema.pagination_keys_matching["name"]: "no",
+                schema.ParameterDetectionAirtableSchema.actual_dynamic_keys["name"]: json.dumps([]),
+                schema.ParameterDetectionAirtableSchema.dynamic_keys_matching["name"]: "no",
+                schema.ParameterDetectionAirtableSchema.comment["name"]: f"ERROR: {e!s}",
+            })
 
-        pagination_keys_matching = "no"
-        if input.expected_pagination_keys and actual_keys is not None:
-            expected_set = set(input.expected_pagination_keys)
-            actual_set = set(actual_keys)
-            pagination_keys_matching = "yes" if expected_set == actual_set else "no"
+        record[schema.ParameterDetectionAirtableSchema.completed_at["name"]] = datetime.now().isoformat()
 
-        record[schema.PaginationDetectionAirtableSchema.actual_pagination_keys["name"]] = json.dumps(actual_keys)
-        record[schema.PaginationDetectionAirtableSchema.pagination_keys_matching["name"]] = pagination_keys_matching
-        record[schema.PaginationDetectionAirtableSchema.completed_at["name"]] = datetime.now().isoformat()
-
-        pagination_detection_table.create(record)
+        parameter_detection_table.create(record)
         self._logger.info(
-            "evaluate-pagination-detection", run_id=run_id, status="completed", match=pagination_keys_matching
+            "evaluate-parameter-detection",
+            run_id=run_id,
+            status="completed",
+            pagination_match=record[schema.ParameterDetectionAirtableSchema.pagination_keys_matching["name"]],
+            dynamic_match=record[schema.ParameterDetectionAirtableSchema.dynamic_keys_matching["name"]],
         )
 
-    async def evaluate_code_generation(self, input: inputs.CodeGenerationInput) -> None:
-        """Evaluate code generation for given input."""
+    async def evaluate_structured_extraction(self, input: inputs.StructuredExtractionInput) -> None:
+        """Evaluate structured extraction for given input."""
 
         output_schema = create_model(json.loads(input.output_schema_file.read_text()))
-        code_generation_table = await self._airtable_client.get_code_generation_table()
+        structured_extraction_table = await self._airtable_client.get_structured_extraction_table()
 
         run_id = str(uuid4())
-        self._logger.info("evaluate-code-generation", run_id=run_id, status="pending")
+        self._logger.info("evaluate-structured-extraction", run_id=run_id, status="pending")
 
         record = {
-            schema.CodeGenerationAirtableSchema.run_id["name"]: run_id,
-            schema.CodeGenerationAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
-            schema.CodeGenerationAirtableSchema.response["name"]: input.response.model_dump_json(
+            schema.StructuredExtractionAirtableSchema.run_id["name"]: run_id,
+            schema.StructuredExtractionAirtableSchema.initiated_at["name"]: datetime.now().isoformat(),
+            schema.StructuredExtractionAirtableSchema.response["name"]: input.response.model_dump_json(
                 indent=2, exclude={"value"}
             ),
-            schema.CodeGenerationAirtableSchema.expected_entity_count["name"]: input.expected_entity_count,
-            schema.CodeGenerationAirtableSchema.comment["name"]: "",
+            schema.StructuredExtractionAirtableSchema.expected_entity_count["name"]: input.expected_entity_count,
+            schema.StructuredExtractionAirtableSchema.comment["name"]: "",
         }
 
         try:
@@ -404,7 +462,7 @@ class TaskEvaluator:
         except Exception as e:
             actual_entity_count = None
             generation_successful = "no"
-            record[schema.CodeGenerationAirtableSchema.comment["name"]] = str(e)
+            record[schema.StructuredExtractionAirtableSchema.comment["name"]] = str(e)
 
         entity_count_difference = 0.0
         if input.expected_entity_count and actual_entity_count is not None:
@@ -412,30 +470,28 @@ class TaskEvaluator:
             entity_count_difference = (difference / input.expected_entity_count) * 100
             entity_count_difference = round(entity_count_difference, 2)
 
-        record[schema.CodeGenerationAirtableSchema.actual_entity_count["name"]] = actual_entity_count
-        record[schema.CodeGenerationAirtableSchema.entity_count_difference["name"]] = entity_count_difference
-        record[schema.CodeGenerationAirtableSchema.generation_successful["name"]] = generation_successful
+        record[schema.StructuredExtractionAirtableSchema.actual_entity_count["name"]] = actual_entity_count
+        record[schema.StructuredExtractionAirtableSchema.entity_count_difference["name"]] = entity_count_difference
+        record[schema.StructuredExtractionAirtableSchema.generation_successful["name"]] = generation_successful
 
-        code_generation_table.create(record)
+        structured_extraction_table.create(record)
         self._logger.info(
-            "evaluate-code-generation",
+            "evaluate-structured-extraction",
             run_id=run_id,
             status="completed",
             success=generation_successful,
             difference=entity_count_difference,
         )
 
-    async def evaluate(
-        self, input: inputs.RequestDetectionInput | inputs.PaginationDetectionInput | inputs.CodeGenerationInput
-    ) -> None:
+    async def evaluate(self, input: inputs.TaskBasedInput) -> None:
         """Route input to appropriate evaluation method."""
 
         if isinstance(input, inputs.RequestDetectionInput):
             await self.evaluate_request_detection(input)
-        elif isinstance(input, inputs.PaginationDetectionInput):
-            await self.evaluate_pagination_detection(input)
-        elif isinstance(input, inputs.CodeGenerationInput):
-            await self.evaluate_code_generation(input)
+        elif isinstance(input, inputs.StructuredExtractionInput):
+            await self.evaluate_structured_extraction(input)
+        elif isinstance(input, inputs.ParameterDetectionInput):
+            await self.evaluate_parameter_detection(input)
         else:
             raise ValueError(f"Unsupported input type: {type(input)}")  # noqa: TRY004
 
@@ -459,13 +515,16 @@ async def get_source_url(
                 await browser_ctx.close()
 
 
-async def get_pagination_keys(
+async def get_pagination_and_dynamic_parameter_keys(
     analyzer: Analyzer,
     *,
     request: Request,
 ):
-    keys, _ = await analyzer.detect_pagination_keys_and_strategy(request)
-    return [v for v in keys.model_dump().values() if v]
+    request_detail = await analyzer.build_request_detail(request)
+    pagination_keys = []
+    if request_detail.pagination_info:
+        pagination_keys = request_detail.pagination_info.keys
+    return pagination_keys, request_detail.dynamic_parameter_keys
 
 
 async def get_entity_count(
@@ -475,8 +534,9 @@ async def get_entity_count(
     output_schema: type[BaseModel],
 ):
     if not response.value:
-        fetched_response = await response.request.make()
+        request_detail = RequestDetail(request=response.request)
+        fetched_response = await request_detail.make_request()
         response.value = await fetched_response.text()
 
-    _, default_limit = await analyzer.get_extraction_code_and_default_limit(response, output_schema)
-    return default_limit
+    response_detail = await analyzer.build_response_detail(response, output_schema)
+    return response_detail.default_entity_count

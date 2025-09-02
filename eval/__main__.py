@@ -44,10 +44,10 @@ async def run(
         is_jsonl = len(lines) > 1 and all(line.startswith("{") for line in lines)
 
     from eval.airtable import AirtableClient
-    from eval.inputs import InputUnion, JobBasedInput, TaskBasedInput
+    from eval.inputs import JobBasedInput, TaskBasedInput
     from strot.type_adapter import TypeAdapter
 
-    inputs_adapter = TypeAdapter(list[InputUnion])
+    inputs_adapter = TypeAdapter(list[TaskBasedInput | JobBasedInput])
 
     if is_jsonl:
         inputs = inputs_adapter.validate_python([

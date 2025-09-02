@@ -19,56 +19,6 @@ _yes_no_single_select_options = {
 }
 
 
-class AnalysisStepsAirtableSchema:
-    """Analysis steps table schema in Airtable."""
-
-    job_id: ClassVar[AirtableField] = {
-        "name": "Job ID",
-        "description": "Unique Job Identifier",
-        "type": "singleLineText",
-    }
-    index: ClassVar[AirtableField] = {
-        "name": "Step Index",
-        "description": "Sequential order of analysis step execution",
-        "type": "number",
-        "options": {"precision": 0},
-    }
-    step: ClassVar[AirtableField] = {
-        "name": "Step Name",
-        "description": "Type of browser action performed during analysis",
-        "type": "singleSelect",
-        "options": {
-            "choices": [
-                {"name": "fallback", "color": "grayLight2"},
-                {"name": "close-overlay-popup", "color": "orangeLight2"},
-                {"name": "skip-to-content", "color": "yellowLight2"},
-                {"name": "load-more-content", "color": "blueLight2"},
-                {"name": "skip-similar-content", "color": "greenLight2"},
-            ]
-        },
-    }
-    screenshot_before_step_execution: ClassVar[AirtableField] = {
-        "name": "Screenshot Before Step Execution",
-        "description": "Page screenshot captured before executing the analysis step",
-        "type": "multipleAttachments",
-    }
-    step_execution_outcome: ClassVar[AirtableField] = {
-        "name": "Step Execution Outcome",
-        "description": "Detailed result and status of the step execution",
-        "type": "multilineText",
-    }
-
-    @classmethod
-    def fields(cls) -> list[AirtableField]:
-        return [
-            cls.job_id,
-            cls.index,
-            cls.step,
-            cls.screenshot_before_step_execution,
-            cls.step_execution_outcome,
-        ]
-
-
 class RequestDetectionAirtableSchema:
     """Request detection evaluation table schema in Airtable."""
 
@@ -131,8 +81,8 @@ class RequestDetectionAirtableSchema:
         ]
 
 
-class PaginationDetectionAirtableSchema:
-    """Pagination detection evaluation table schema in Airtable."""
+class ParameterDetectionAirtableSchema:
+    """Parameter detection evaluation table schema in Airtable."""
 
     run_id: ClassVar[AirtableField] = {
         "name": "Run ID",
@@ -158,6 +108,7 @@ class PaginationDetectionAirtableSchema:
         "type": "multilineText",
     }
 
+    # Pagination parameter tracking
     expected_pagination_keys: ClassVar[AirtableField] = {
         "name": "Expected Pagination Keys",
         "description": "Expected pagination parameter names",
@@ -171,6 +122,24 @@ class PaginationDetectionAirtableSchema:
     pagination_keys_matching: ClassVar[AirtableField] = {
         "name": "Pagination Keys Matching",
         "description": "Whether detected and expected pagination keys match",
+        "type": "singleSelect",
+        "options": _yes_no_single_select_options,
+    }
+
+    # Dynamic parameter tracking
+    expected_dynamic_keys: ClassVar[AirtableField] = {
+        "name": "Expected Dynamic Keys",
+        "description": "Expected dynamic parameter names (sorting, filtering, search)",
+        "type": "singleLineText",
+    }
+    actual_dynamic_keys: ClassVar[AirtableField] = {
+        "name": "Actual Dynamic Keys",
+        "description": "Detected dynamic parameter names",
+        "type": "singleLineText",
+    }
+    dynamic_keys_matching: ClassVar[AirtableField] = {
+        "name": "Dynamic Keys Matching",
+        "description": "Whether detected and expected dynamic keys match",
         "type": "singleSelect",
         "options": _yes_no_single_select_options,
     }
@@ -191,12 +160,15 @@ class PaginationDetectionAirtableSchema:
             cls.expected_pagination_keys,
             cls.actual_pagination_keys,
             cls.pagination_keys_matching,
+            cls.expected_dynamic_keys,
+            cls.actual_dynamic_keys,
+            cls.dynamic_keys_matching,
             cls.comment,
         ]
 
 
-class CodeGenerationAirtableSchema:
-    """Code generation evaluation table schema in Airtable."""
+class StructuredExtractionAirtableSchema:
+    """Structured extraction evaluation table schema in Airtable."""
 
     run_id: ClassVar[AirtableField] = {
         "name": "Run ID",
@@ -331,6 +303,23 @@ class EvaluationMetricsAirtableSchema:
         "options": _yes_no_single_select_options,
     }
 
+    dynamic_keys_expected: ClassVar[AirtableField] = {
+        "name": "Expected Dynamic Keys",
+        "description": "Expected dynamic parameter names (sorting, filtering, search)",
+        "type": "singleLineText",
+    }
+    dynamic_keys_actual: ClassVar[AirtableField] = {
+        "name": "Actual Dynamic Keys",
+        "description": "Detected dynamic parameter names",
+        "type": "singleLineText",
+    }
+    dynamic_keys_matching: ClassVar[AirtableField] = {
+        "name": "Dynamic Keys Matching",
+        "description": "Whether detected and expected dynamic keys match",
+        "type": "singleSelect",
+        "options": _yes_no_single_select_options,
+    }
+
     entity_count_expected: ClassVar[AirtableField] = {
         "name": "Expected Entity Count",
         "description": "Expected number of data entities that should be extracted",
@@ -378,9 +367,62 @@ class EvaluationMetricsAirtableSchema:
             cls.pagination_keys_expected,
             cls.pagination_keys_actual,
             cls.pagination_keys_matching,
+            cls.dynamic_keys_expected,
+            cls.dynamic_keys_actual,
+            cls.dynamic_keys_matching,
             cls.entity_count_expected,
             cls.entity_count_actual,
             cls.entity_count_difference,
             cls.analysis_steps | {"options": {"linkedTableId": analysis_steps_table_id}},
             cls.comment,
+        ]
+
+
+class AnalysisStepsAirtableSchema:
+    """Analysis steps table schema in Airtable."""
+
+    job_id: ClassVar[AirtableField] = {
+        "name": "Job ID",
+        "description": "Unique Job Identifier",
+        "type": "singleLineText",
+    }
+    index: ClassVar[AirtableField] = {
+        "name": "Step Index",
+        "description": "Sequential order of analysis step execution",
+        "type": "number",
+        "options": {"precision": 0},
+    }
+    step: ClassVar[AirtableField] = {
+        "name": "Step Name",
+        "description": "Type of browser action performed during analysis",
+        "type": "singleSelect",
+        "options": {
+            "choices": [
+                {"name": "fallback", "color": "grayLight2"},
+                {"name": "close-overlay-popup", "color": "orangeLight2"},
+                {"name": "skip-to-content", "color": "yellowLight2"},
+                {"name": "load-more-content", "color": "blueLight2"},
+                {"name": "skip-similar-content", "color": "greenLight2"},
+            ]
+        },
+    }
+    screenshot_before_step_execution: ClassVar[AirtableField] = {
+        "name": "Screenshot Before Step Execution",
+        "description": "Page screenshot captured before executing the analysis step",
+        "type": "multipleAttachments",
+    }
+    step_execution_outcome: ClassVar[AirtableField] = {
+        "name": "Step Execution Outcome",
+        "description": "Detailed result and status of the step execution",
+        "type": "multilineText",
+    }
+
+    @classmethod
+    def fields(cls) -> list[AirtableField]:
+        return [
+            cls.job_id,
+            cls.index,
+            cls.step,
+            cls.screenshot_before_step_execution,
+            cls.step_execution_outcome,
         ]

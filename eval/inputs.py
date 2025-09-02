@@ -2,8 +2,18 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from strot.analyzer.schema import Response
-from strot.analyzer.schema.request import Request
+from strot.schema.request import Request
+from strot.schema.response import Response
+
+__all__ = (
+    "JobBasedInput",
+    "TaskBasedInput",
+    "ExistingJobInput",
+    "NewJobInput",
+    "RequestDetectionInput",
+    "ParameterDetectionInput",
+    "StructuredExtractionInput",
+)
 
 
 class BaseInput(BaseModel):
@@ -16,19 +26,22 @@ class BaseInput(BaseModel):
         raise NotImplementedError
 
 
-class ExpectedSource(BaseModel):
+class RequestDetectionCommonInput(BaseModel):
     expected_source: str = Field(..., description="Expected source URL")
 
 
-class ExpectedPaginationKeys(BaseModel):
+class ParameterDetectionCommonInput(BaseModel):
     expected_pagination_keys: list[str] = Field(default_factory=list, description="Expected pagination keys")
+    expected_dynamic_keys: list[str] = Field(default_factory=list, description="Expected dynamic keys")
 
 
-class ExpectedEntityCount(BaseModel):
+class StructuredExtractionCommonInput(BaseModel):
     expected_entity_count: int = Field(..., gt=0, description="Expected entity count")
 
 
-class ExistingJobInput(BaseInput, ExpectedSource, ExpectedPaginationKeys, ExpectedEntityCount):
+class ExistingJobInput(
+    BaseInput, RequestDetectionCommonInput, ParameterDetectionCommonInput, StructuredExtractionCommonInput
+):
     job_id: str = Field(..., description="Job ID")
 
     @property
@@ -40,7 +53,9 @@ class ExistingJobInput(BaseInput, ExpectedSource, ExpectedPaginationKeys, Expect
         return "existing job"
 
 
-class NewJobInput(BaseInput, ExpectedSource, ExpectedPaginationKeys, ExpectedEntityCount):
+class NewJobInput(
+    BaseInput, RequestDetectionCommonInput, ParameterDetectionCommonInput, StructuredExtractionCommonInput
+):
     site_url: str = Field(..., description="Site URL")
     label: str = Field(..., description="Label")
 
@@ -53,7 +68,7 @@ class NewJobInput(BaseInput, ExpectedSource, ExpectedPaginationKeys, ExpectedEnt
         return "new job"
 
 
-class RequestDetectionInput(BaseInput, ExpectedSource):
+class RequestDetectionInput(BaseInput, RequestDetectionCommonInput):
     site_url: str = Field(..., description="Site URL")
     query: str = Field(..., description="Query")
 
@@ -66,7 +81,7 @@ class RequestDetectionInput(BaseInput, ExpectedSource):
         return "request detection"
 
 
-class PaginationDetectionInput(BaseInput, ExpectedPaginationKeys):
+class ParameterDetectionInput(BaseInput, ParameterDetectionCommonInput):
     request: Request
 
     @property
@@ -75,10 +90,10 @@ class PaginationDetectionInput(BaseInput, ExpectedPaginationKeys):
 
     @property
     def type(self) -> str:
-        return "pagination detection"
+        return "parameter detection"
 
 
-class CodeGenerationInput(BaseInput, ExpectedEntityCount):
+class StructuredExtractionInput(BaseInput, StructuredExtractionCommonInput):
     response: Response
     output_schema_file: Path
 
@@ -88,11 +103,9 @@ class CodeGenerationInput(BaseInput, ExpectedEntityCount):
 
     @property
     def type(self) -> str:
-        return "code generation"
+        return "structured extraction"
 
 
 JobBasedInput = ExistingJobInput | NewJobInput
 
-TaskBasedInput = RequestDetectionInput | PaginationDetectionInput | CodeGenerationInput
-
-InputUnion = TaskBasedInput | JobBasedInput
+TaskBasedInput = RequestDetectionInput | ParameterDetectionInput | StructuredExtractionInput
