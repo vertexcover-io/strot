@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 
-from strot.analyzer.schema import Point
+from strot.schema.point import Point
+
+__all__ = ("StepResult", "PaginationKeys", "ParameterDetectionResult")
 
 
 class StepResult(BaseModel):
@@ -31,3 +33,16 @@ class PaginationKeys(BaseModel):
     limit_key: str | None = None
     offset_key: str | None = None
     cursor_key: str | None = None
+
+
+class ParameterDetectionResult(BaseModel):
+    """
+    Args:
+        apply_parameters_code: Python function code that applies both pagination and dynamic parameters to a request.
+        pagination_keys: Traditional pagination parameter names for PaginationStrategy integration.
+        dynamic_parameter_keys: User-controllable business logic parameters (sorting, filtering, search, etc.).
+    """
+
+    apply_parameters_code: str
+    pagination_keys: PaginationKeys
+    dynamic_parameter_keys: list[str]
