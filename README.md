@@ -26,9 +26,9 @@ Strot analyzes websites and discovers their internal API calls for you.
 
 1. **Analyzes the webpage** to understand what data you want
 2. **Captures the AJAX request** that fetches that data
-3. **Figures out pagination** (limit/offset, cursors, page numbers)
+3. **Detects all parameters** - pagination (limit/offset, cursors, page numbers) AND dynamic parameters (sorting, filtering, search)
 4. **Generates extraction code** to parse the JSON response
-5. **Returns a Source** that replicates the website's own API calls
+5. **Returns a Source** that replicates the website's own API calls with full parameter control
 
 ## 🐳 Try It Now - No Setup Required!
 
@@ -90,8 +90,8 @@ async def get_reviews():
         output_schema=Review
     )
 
-    # Use the same API call the website uses, with your own pagination
-    async for reviews in source.generate_data(limit=500, offset=100):
+    # Use the same API call the website uses, with full parameter control
+    async for reviews in source.generate_data(limit=500, offset=100, sortBy="date desc"):
         for review in reviews:
             print(f"{review['rating']}⭐ by {review['username']}: {review['comment']}")
 
@@ -121,8 +121,8 @@ async def get_products():
         output_schema=Product
     )
 
-    # Paginate through all products using the discovered API
-    async for products in source.generate_data(limit=100, offset=0):
+    # Access all products with custom filtering and sorting
+    async for products in source.generate_data(limit=100, offset=0, category="vegetables", sortBy="price"):
         for product in products:
             print(f"{product['name']}: ${product['price']} ({product['rating']}⭐)")
 
@@ -137,10 +137,10 @@ Test and validate Strot's analysis accuracy across different websites and indivi
 - **existing jobs** (evaluate completed jobs by ID),
 - **new jobs** (create and evaluate full analysis tasks),
 - **request detection** (test URL and query combinations),
-- **pagination detection** (test individual request pagination analysis),
-- **code generation** (test response parsing with specific schemas).
+- **parameter detection** (test individual request parameter analysis - both pagination and dynamic parameters),
+- **structured extraction** (test response parsing with specific schemas).
 
-It compares actual results against expected outcomes, tracking metrics like source URL matching, pagination key detection, and entity count accuracy. All evaluations and their detailed analysis steps are stored in Airtable.
+It compares actual results against expected outcomes, tracking metrics like source URL matching, pagination key detection, dynamic parameter detection, and entity count accuracy. All evaluations and their detailed analysis steps are stored in Airtable.
 
 ### Setup
 
@@ -202,6 +202,7 @@ echo '[
     "job_id": "existing-job-uuid",
     "expected_source": "https://api.example.com/reviews",
     "expected_pagination_keys": ["cursor", "limit"],
+    "expected_dynamic_keys": ["sortBy", "category"],
     "expected_entity_count": 243
   },
   {
@@ -209,6 +210,7 @@ echo '[
     "query": "Listed products with name and prices",
     "expected_source": "https://api.example.com/products",
     "expected_pagination_keys": ["limit", "offset"],
+    "expected_dynamic_keys": ["category", "sortBy"],
     "expected_entity_count": 100
   },
   {
@@ -216,9 +218,10 @@ echo '[
       "method": "GET",
       "url": "https://example.com/api/products",
       "type": "ajax",
-      "queries": {"page": "2", "limit": "50"}
+      "queries": {"page": "2", "limit": "50", "sortBy": "price", "category": "electronics"}
     },
-    "expected_pagination_keys": ["page", "limit"]
+    "expected_pagination_keys": ["page", "limit"],
+    "expected_dynamic_keys": ["sortBy", "category"]
   },
   {
     "response": {
