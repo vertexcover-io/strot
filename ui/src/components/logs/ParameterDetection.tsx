@@ -1,19 +1,19 @@
 "use client";
 
-import { PaginationDetection as PaginationDetectionType } from "@/lib/report-generator";
+import { PaginationDetection as ParameterDetectionType } from "@/lib/report-generator";
 import { LLMCall } from "./LLMCall";
 import { CodeBlock } from "../common/CodeBlock";
 import { CheckCircle, XCircle, AlertCircle, Clock } from "lucide-react";
 
-interface PaginationDetectionProps {
-  detection: PaginationDetectionType;
+interface ParameterDetectionProps {
+  detection: ParameterDetectionType;
   index: number;
 }
 
-export function PaginationDetection({
+export function ParameterDetection({
   detection,
   index,
-}: PaginationDetectionProps) {
+}: ParameterDetectionProps) {
   const getStatusIcon = (status?: string) => {
     switch (status) {
       case "success":
@@ -38,10 +38,11 @@ export function PaginationDetection({
             </div>
             <div>
               <div className="font-semibold text-gray-900">
-                Pagination Detection Attempt {index + 1}
+                Parameter Detection Attempt {index + 1}
               </div>
               <div className="text-sm text-gray-600">
-                Analyzing API request structure for pagination patterns
+                Analyzing API request structure for pagination and dynamic
+                parameters
               </div>
             </div>
           </div>
@@ -81,7 +82,19 @@ export function PaginationDetection({
         </div>
       )}
 
-      {/* 2. Request Parameters Analysis */}
+      {/* 2. Input Analysis */}
+      {detection.request && (
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-gray-800 mb-3">
+            Request Structure Analyzed
+          </h4>
+          <CodeBlock title="request.json" language="json" maxHeight="max-h-40">
+            {JSON.stringify(detection.request, null, 2)}
+          </CodeBlock>
+        </div>
+      )}
+
+      {/* Legacy Support - Potential Pagination Parameters */}
       {detection.potential_pagination_parameters &&
         Object.keys(detection.potential_pagination_parameters).length > 0 && (
           <div className="mb-6">
@@ -115,17 +128,79 @@ export function PaginationDetection({
           </div>
         )}
 
-        {/* Pagination Strategy Info */}
-        {detection.status === "success" && detection.strategy && (
-          <div>
-            <h4 className="text-sm font-semibold text-gray-800 mb-3">
-              Strategy Info
-            </h4>
-            <CodeBlock title="info.json" language="json" maxHeight="max-h-40">
-              {JSON.stringify(detection.strategy, null, 2)}
-            </CodeBlock>
+        {/* New Unified Parameter Detection Results */}
+        {detection.status === "success" && (
+          <div className="space-y-4">
+            {/* Pagination Keys */}
+            {detection.pagination_keys && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">
+                  Pagination Keys Detected
+                </h4>
+                <CodeBlock
+                  title="pagination_keys.json"
+                  language="json"
+                  maxHeight="max-h-40"
+                >
+                  {JSON.stringify(detection.pagination_keys, null, 2)}
+                </CodeBlock>
+              </div>
+            )}
+
+            {/* Dynamic Parameter Keys */}
+            {detection.dynamic_parameter_keys &&
+              detection.dynamic_parameter_keys.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800 mb-3">
+                    Dynamic Parameter Keys
+                  </h4>
+                  <div className="bg-blue-50 p-3 rounded border">
+                    <div className="flex flex-wrap gap-2">
+                      {detection.dynamic_parameter_keys.map((key, idx) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full font-medium"
+                        >
+                          {key}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {/* Generated Apply Parameters Code */}
+            {detection.apply_parameters_code && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">
+                  Generated Parameter Application Code
+                </h4>
+                <CodeBlock
+                  title="apply_parameters.py"
+                  language="python"
+                  maxHeight="max-h-96"
+                  theme="dark"
+                >
+                  {detection.apply_parameters_code}
+                </CodeBlock>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Legacy Support - Pagination Strategy Info */}
+        {detection.status === "success" &&
+          detection.strategy &&
+          !detection.pagination_keys && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-800 mb-3">
+                Legacy Strategy Info
+              </h4>
+              <CodeBlock title="info.json" language="json" maxHeight="max-h-40">
+                {JSON.stringify(detection.strategy, null, 2)}
+              </CodeBlock>
+            </div>
+          )}
       </div>
     </div>
   );

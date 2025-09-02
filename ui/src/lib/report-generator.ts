@@ -25,6 +25,15 @@ export interface LogEvent {
   code?: string;
   strategy?: { info: Record<string, unknown> } | Record<string, unknown>;
   potential_pagination_parameters?: Record<string, unknown>;
+  // New unified parameter detection fields (inputs/outputs)
+  request?: Record<string, unknown>;
+  pagination_keys?: Record<string, unknown>;
+  dynamic_parameter_keys?: string[];
+  apply_parameters_code?: string;
+  // New structured extraction fields (inputs/outputs)
+  response_length?: number;
+  preprocessor?: Record<string, unknown>;
+  default_entity_count?: number;
   [key: string]: unknown;
 }
 
@@ -48,6 +57,11 @@ export interface PaginationDetection {
   strategy?: { info: Record<string, unknown> } | Record<string, unknown>;
   llm_calls: LogEvent[];
   reason?: string;
+  // New unified parameter detection fields
+  request?: Record<string, unknown>;
+  pagination_keys?: Record<string, unknown>;
+  dynamic_parameter_keys?: string[];
+  apply_parameters_code?: string;
 }
 
 export interface CodeGeneration {
@@ -55,10 +69,12 @@ export interface CodeGeneration {
   code?: string;
   reason?: string;
   llm_completion?: LogEvent;
-  // Additional fields from new code-generation events
+  // Legacy fields
   default_limit?: number;
   response_length?: number;
   preprocessor?: Record<string, unknown>;
+  // New structured extraction fields
+  default_entity_count?: number;
 }
 
 export interface ReportData {
@@ -130,7 +146,7 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
     const eventType = event.event || "unknown";
     const action = event.action || "";
 
-    // Main analysis events (support both old analysis and new request-detection events)
+    // Main analysis events (support old analysis, request-detection, parameter-detection, and structured-extraction)
     if (eventType === "analysis") {
       if (action === "begin") {
         analysis_begin = event;
@@ -171,7 +187,8 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         }
       } else if (
         action === "detect-pagination" ||
-        action === "pagination-detection"
+        action === "pagination-detection" ||
+        action === "parameter-detection"
       ) {
         const status = event.status || "";
         if (status === "pending") {
@@ -192,7 +209,10 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
             current_pagination = null;
           }
         }
-      } else if (action === "code-generation") {
+      } else if (
+        action === "code-generation" ||
+        action === "structured-extraction"
+      ) {
         const status = event.status || "";
         if (status === "pending") {
           // Only create new code generation if we don't already have one pending
@@ -255,7 +275,8 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
       });
     } else if (
       (eventType === "detect-pagination" ||
-        eventType === "pagination-detection") &&
+        eventType === "pagination-detection" ||
+        eventType === "parameter-detection") &&
       action === "llm-completion" &&
       current_pagination
     ) {
@@ -263,7 +284,8 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         current_pagination.llm_calls.push(event);
       }
     } else if (
-      eventType === "pagination-detection" &&
+      (eventType === "pagination-detection" ||
+        eventType === "parameter-detection") &&
       current_pagination &&
       event.status === "success"
     ) {
@@ -272,10 +294,25 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
       current_pagination.strategy = event.strategy;
       current_pagination.potential_pagination_parameters =
         event.parameters || event.potential_pagination_parameters;
+      // Handle new unified parameter detection fields
+      if (event.request) {
+        current_pagination.request = event.request;
+      }
+      if (event.pagination_keys) {
+        current_pagination.pagination_keys = event.pagination_keys;
+      }
+      if (event.dynamic_parameter_keys) {
+        current_pagination.dynamic_parameter_keys =
+          event.dynamic_parameter_keys;
+      }
+      if (event.apply_parameters_code) {
+        current_pagination.apply_parameters_code = event.apply_parameters_code;
+      }
       pagination_detections.push(current_pagination);
       current_pagination = null;
     } else if (
-      eventType === "code-generation" &&
+      (eventType === "code-generation" ||
+        eventType === "structured-extraction") &&
       action === "llm-completion" &&
       event.status !== "pending"
     ) {
@@ -283,7 +320,10 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         current_code_gen = { status: "pending" };
       }
       current_code_gen.llm_completion = event;
-    } else if (eventType === "code-generation") {
+    } else if (
+      eventType === "code-generation" ||
+      eventType === "structured-extraction"
+    ) {
       // Handle direct code-generation events from individual methods
       const status = event.status || "";
 
@@ -312,6 +352,9 @@ export function parseJSONLLogs(jsonlContent: string): ReportData {
         }
         if (event.default_limit !== undefined) {
           current_code_gen.default_limit = event.default_limit;
+        }
+        if (event.default_entity_count !== undefined) {
+          current_code_gen.default_entity_count = event.default_entity_count;
         }
         if (event.reason) {
           current_code_gen.reason = event.reason;
