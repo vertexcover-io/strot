@@ -71,6 +71,7 @@ class AirtableClient:
         return self._tables[table_name]
 
     async def get_metrics_table(self) -> Table:
+        """Get metrics table."""
         table_name = env_settings.AIRTABLE_METRICS_TABLE
 
         if not (await self.table_exists(table_name)):
@@ -83,7 +84,7 @@ class AirtableClient:
         return self.get_table(table_name)
 
     async def get_analysis_steps_table(self) -> Table:
-        """Get or create analysis steps table."""
+        """Get analysis steps table."""
         table_name = env_settings.AIRTABLE_ANALYSIS_STEPS_TABLE
 
         if not (await self.table_exists(table_name)):
@@ -95,7 +96,7 @@ class AirtableClient:
         return self.get_table(table_name)
 
     async def get_request_detection_table(self) -> Table:
-        """Get or create request detection evaluation table."""
+        """Get request detection evaluation table."""
         table_name = env_settings.AIRTABLE_REQUEST_DETECTION_TABLE
 
         if not (await self.table_exists(table_name)):
@@ -106,26 +107,26 @@ class AirtableClient:
 
         return self.get_table(table_name)
 
-    async def get_pagination_detection_table(self) -> Table:
-        """Get or create pagination detection evaluation table."""
-        table_name = env_settings.AIRTABLE_PAGINATION_DETECTION_TABLE
+    async def get_parameter_detection_table(self) -> Table:
+        """Get parameter detection evaluation table."""
+        table_name = "parameter_detection_eval"
 
         if not (await self.table_exists(table_name)):
             await self.create_table(
                 table_name,
-                schema.PaginationDetectionAirtableSchema.fields(),
+                schema.ParameterDetectionAirtableSchema.fields(),
             )
 
         return self.get_table(table_name)
 
-    async def get_code_generation_table(self) -> Table:
-        """Get or create code generation evaluation table."""
-        table_name = env_settings.AIRTABLE_CODE_GENERATION_TABLE
+    async def get_structured_extraction_table(self) -> Table:
+        """Get structured extraction evaluation table."""
+        table_name = env_settings.AIRTABLE_STRUCTURED_EXTRACTION_TABLE
 
         if not (await self.table_exists(table_name)):
             await self.create_table(
                 table_name,
-                schema.CodeGenerationAirtableSchema.fields(),
+                schema.StructuredExtractionAirtableSchema.fields(),
             )
 
         return self.get_table(table_name)
