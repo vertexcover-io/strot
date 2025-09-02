@@ -4,9 +4,9 @@ from urllib.parse import parse_qsl, urlparse
 from patchright.async_api import BrowserContext, Page
 from patchright.async_api import Response as InterceptedResponse
 
-from strot.analyzer.schema import Response
-from strot.analyzer.schema.request import Request
 from strot.browser.plugin import Plugin
+from strot.schema.request import Request
+from strot.schema.response import Response
 
 EXCLUDE_KEYWORDS = {"analytics", "telemetry", "events", "collector", "track", "collect"}
 
