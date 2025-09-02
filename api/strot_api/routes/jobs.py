@@ -10,8 +10,9 @@ from pydantic import BaseModel, HttpUrl
 from sqlalchemy import func, select
 
 import strot
-from strot.analyzer.schema.source import Source
 from strot.logging import get_logger, handlers, setup_logging
+from strot.schema.source import OldSource, Source
+from strot.type_adapter import TypeAdapter
 from strot_api.database import DBSessionDependency, sessionmanager
 from strot_api.database.schema import Job, Label
 from strot_api.settings import settings
@@ -58,7 +59,7 @@ class GetJobResponse(BaseModel):
     # if the bg process fails
     error: str | None = None
     # when job is ready
-    source: Source | None = None
+    source: Source | OldSource | None = None
     result: dict[str, Any] | None = None
 
 
@@ -186,7 +187,8 @@ async def list_jobs(
 
 
 @router.get("/{job_id}", response_model=GetJobResponse)
-async def get_job(
+async def get_job(  # noqa: C901
+    raw_request: Request,
     job_id: UUID,
     db: DBSessionDependency,
     limit: int | None = Query(None, ge=1, description="Limit for data extraction (optional)"),
@@ -232,12 +234,19 @@ async def get_job(
     result = None
     label_name = job.label.name
 
+    dynamic_parameters = {}
+    if raw_request.query_params:
+        for k, v in raw_request.query_params.items():
+            if k in ["limit", "offset"]:
+                continue
+            dynamic_parameters[k] = v
+
     # Only extract data if limit/offset are explicitly provided
     if job.status == "ready" and job.source and limit is not None:
-        source = Source.model_validate(job.source)
+        source = TypeAdapter(OldSource | Source).validate_python(job.source)
         result = {label_name: []}
         try:
-            async for data in source.generate_data(limit=limit, offset=offset or 0):
+            async for data in source.generate_data(limit=limit, offset=offset or 0, **dynamic_parameters):
                 result[label_name].extend(data)
 
             result["count"] = len(result[label_name])
