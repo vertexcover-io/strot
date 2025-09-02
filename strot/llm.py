@@ -7,7 +7,8 @@ import anthropic
 import openai
 from pydantic import BaseModel, PrivateAttr, model_validator
 
-from strot.analyzer.utils import encode_image, extract_json, guess_image_type
+from strot.utils.image import encode_image, guess_image_type
+from strot.utils.text import extract_json
 
 LLMProvider = Literal["openai", "anthropic", "groq", "open-router"]
 
