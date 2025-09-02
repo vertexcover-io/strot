@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { ReportData, parseJSONLLogs } from "@/lib/report-generator";
 import { SlideNavigation } from "./SlideNavigation";
 import { AnalysisStep } from "./AnalysisStep";
-import { PaginationDetection } from "./PaginationDetection";
-import { CodeGeneration } from "./CodeGeneration";
+import { ParameterDetection } from "./ParameterDetection";
+import { StructuredExtraction } from "./StructuredExtraction";
 import { CodeBlock } from "../common/CodeBlock";
 import { format } from "date-fns";
 import { Clock, DollarSign, Zap, Eye, Code, Search } from "lucide-react";
@@ -39,9 +39,9 @@ export function LogViewer({
       const stored = sessionStorage.getItem(`slidePositions_${jobId}`);
       return stored
         ? JSON.parse(stored)
-        : { analysis: 0, pagination: 0, codegen: 0 };
+        : { analysis: 0, parameter: 0, extraction: 0 };
     } catch {
-      return { analysis: 0, pagination: 0, codegen: 0 };
+      return { analysis: 0, parameter: 0, extraction: 0 };
     }
   };
 
@@ -385,10 +385,10 @@ export function LogViewer({
           </div>
         </div>
 
-        {/* Site Analysis */}
+        {/* Request Detection */}
         <SlideNavigation
           items={reportData.analysis_steps}
-          title="Site Analysis"
+          title="Request Detection"
           icon={Eye}
           renderItem={(step, index) => <AnalysisStep step={step} />}
           getItemTitle={(step) =>
@@ -402,16 +402,16 @@ export function LogViewer({
         {reportData.pagination_detections.length > 0 && (
           <SlideNavigation
             items={reportData.pagination_detections}
-            title="Pagination Detection"
+            title="Parameter Detection"
             icon={Search}
             renderItem={(detection, index) => (
-              <PaginationDetection detection={detection} index={index} />
+              <ParameterDetection detection={detection} index={index} />
             )}
             getItemTitle={(detection, index) =>
               `Attempt ${index + 1} (${detection.status || "unknown"})`
             }
-            currentIndex={slidePositions.pagination}
-            onIndexChange={(index) => updateSlidePosition("pagination", index)}
+            currentIndex={slidePositions.parameter}
+            onIndexChange={(index) => updateSlidePosition("parameter", index)}
           />
         )}
 
@@ -419,20 +419,20 @@ export function LogViewer({
         {reportData.code_generations.length > 0 && (
           <SlideNavigation
             items={reportData.code_generations}
-            title="Code Generation"
+            title="Structured Extraction"
             icon={Code}
             renderItem={(generation, index) => (
-              <CodeGeneration
-                generation={generation}
+              <StructuredExtraction
+                extraction={generation}
                 index={index}
-                totalGenerations={reportData.code_generations.length}
+                totalExtractions={reportData.code_generations.length}
               />
             )}
             getItemTitle={(generation, index) =>
-              `Generation ${index + 1} (${generation.status || "unknown"})`
+              `Extraction ${index + 1} (${generation.status || "unknown"})`
             }
-            currentIndex={slidePositions.codegen}
-            onIndexChange={(index) => updateSlidePosition("codegen", index)}
+            currentIndex={slidePositions.extraction}
+            onIndexChange={(index) => updateSlidePosition("extraction", index)}
           />
         )}
       </div>
