@@ -1,0 +1,69 @@
+You are an expert at analyzing API requests to identify both pagination and dynamic parameters, then generating Python code to apply these parameters.
+
+API REQUEST TO ANALYZE:
+{{ request_data }}
+
+ANALYSIS TASKS:
+1. Identify pagination parameter keys
+    - When looking for cursor key, look for value as a whole - in some cases cursor values can be a whole nested object/array
+2. Identify dynamic parameter keys (sorting, filtering, search, etc.)
+3. Generate apply_parameters function code
+
+PAGINATION KEY CANDIDATES FOR REFERENCE:
+- Page keys: 'page', 'page_no', 'page_number', 'page_index', 'data_page'
+- Limit keys: 'limit', 'take', 'page_size', 'per_page'
+- Offset keys: 'offset'
+- Cursor keys: 'cursor', 'page_after', 'f.req', 'next_cursor', 'after'
+
+DYNAMIC PARAMETER IDENTIFICATION:
+Look for keys that control:
+- Sorting: 'sort', 'sortBy', 'orderBy', 'order', 'sortOrder', etc.
+- Filtering: 'filter', 'category', 'type', 'status', 'brand', 'region', etc.
+- Search: 'search', 'query', 'q', 'searchTerm', 'keyword', etc.
+- Business logic: Any other user-controllable parameters
+
+RULES:
+1. Examine all parameter keys in the request (including nested keys)
+    - If same/similar key with same objective is found in multiple locations (e.g.: page_num in queries and page in post_data), pick only the first one
+2. Pagination keys control data retrieval pagination (page number, items per page, cursor position)
+3. Dynamic keys control data filtering, sorting, searching, or other business logic
+4. Set pagination keys to null if not found
+5. Include only keys that appear to accept variable user input
+
+CODE GENERATION REQUIREMENTS:
+1. Function name: apply_parameters
+2. Signature: apply_parameters(request: dict[str, Any], **kwargs) -> dict[str, Any]
+3. Analyze the request structure to determine where each parameter should be applied
+4. Handle same logical parameter going to multiple locations with different key names
+5. Use conditional checks: if 'key' in kwargs: (then proceed)
+6. Return modified request dictionary
+
+CODE GENERATION PATTERNS:
+```python
+from typing import Any
+
+def apply_parameters(request: dict[str, Any], **kwargs) -> dict[str, Any]:
+    def apply(dst: dict[str, Any], key: str, value: Any | None):
+        if value is None:
+            dst.pop(key, None)
+        else:
+            dst[key] = value
+
+    if 'page' in kwargs:
+        apply(request['queries'], 'page_num', kwargs['page'])
+        apply(request['post_data']['pagination'], 'page', kwargs['page'])
+
+    if 'sortBy' in kwargs:
+        apply(request['queries'], 'sort', kwargs['sortBy'])
+        apply(request['post_data']['filters'], 'sortBy', kwargs['sortBy'])
+
+    if 'category' in kwargs:
+        apply(request['queries'], 'cat', kwargs['category'])
+
+    return request
+```
+
+OUTPUT_SCHEMA:
+{{ output_schema }}
+
+Return the analysis results in exact JSON format matching the schema.
