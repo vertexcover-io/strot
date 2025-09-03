@@ -535,8 +535,11 @@ async def get_entity_count(
 ):
     if not response.value:
         request_detail = RequestDetail(request=response.request)
-        fetched_response = await request_detail.make_request()
-        response.value = await fetched_response.text()
+        try:
+            fetched_response = await request_detail.make_request()
+            response.value = await fetched_response.text()
+        except Exception as e:
+            raise ValueError(f"Failed to fetch response: {e}") from e
 
     response_detail = await analyzer.build_response_detail(response, output_schema)
     return response_detail.default_entity_count
