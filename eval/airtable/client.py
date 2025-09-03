@@ -109,7 +109,7 @@ class AirtableClient:
 
     async def get_parameter_detection_table(self) -> Table:
         """Get parameter detection evaluation table."""
-        table_name = "parameter_detection_eval"
+        table_name = env_settings.AIRTABLE_PARAMETER_DETECTION_TABLE
 
         if not (await self.table_exists(table_name)):
             await self.create_table(
