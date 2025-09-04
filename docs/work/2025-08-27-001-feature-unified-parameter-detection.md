@@ -7,7 +7,7 @@ Current analysis detects pagination parameters but ignores user-controllable dyn
 - **Missing Dynamic Control**: Users cannot specify sorting, filtering, search terms, or category selections
 - **Separate Detection Logic**: Pagination and dynamic parameters are handled independently, creating complexity
 - **Limited Request Customization**: Generated sources only support limit/offset, not business logic parameters
-- **Manual Parameter Mapping**: Multiple keys for same logical parameter (e.g., `page_num` in query, `page` in POST data) require manual handling
+- **Manual Parameter Mapping**: Multiple keys for the same logical parameter (e.g., `page_num` in query, `page` in POST data) require manual handling
 
 ### Example: E-commerce API with Dynamic Parameters
 
