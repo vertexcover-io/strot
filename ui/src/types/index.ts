@@ -39,7 +39,6 @@ export interface GetJobResponse {
   completed_at?: string;
   error?: string;
   source?: any;
-  result?: any;
 }
 
 // Label related types

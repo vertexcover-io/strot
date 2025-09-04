@@ -162,7 +162,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
                     used_fallback = True
                     response = await request_detail.make_request(parameters=state)
                 else:
-                    break
+                    raise
 
             response_text = await response.text()
             # Check for identical responses (end of data)
@@ -222,10 +222,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
                 pg_info.offset.key: str(pg_info.offset.default_value + offset_within_page),
             }
 
-            try:
-                response = await request_detail.make_request(parameters=state)
-            except RequestException:
-                break
+            response = await request_detail.make_request(parameters=state)
 
             response_text = await response.text()
             if not response_text or response_text == last_response_text:

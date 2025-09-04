@@ -23,8 +23,10 @@ export function FullPageJobView({
   jobId,
 }: FullPageJobViewProps) {
   const [jobData, setJobData] = useState<GetJobResponse | null>(null);
-  const [jobDataWithSample, setJobDataWithSample] =
-    useState<GetJobResponse | null>(null);
+  const [sampleData, setSampleData] = useState<{
+    data: any[];
+    error?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,8 +100,8 @@ export function FullPageJobView({
 
     try {
       setSampleLoading(true);
-      const dataWithSample = await apiClient.getJobWithSampleData(jobId);
-      setJobDataWithSample(dataWithSample);
+      const data = await apiClient.fetchJobData(jobId, { limit: 5, offset: 0 });
+      setSampleData(data);
     } catch (err) {
       console.error("Failed to fetch sample data:", err);
     } finally {
@@ -113,7 +115,7 @@ export function FullPageJobView({
       activeTab === "preview" &&
       jobData?.status === "ready" &&
       jobData?.source &&
-      !jobDataWithSample
+      !sampleData
     ) {
       fetchSampleData();
     }
@@ -121,7 +123,7 @@ export function FullPageJobView({
 
   const handleClose = () => {
     setJobData(null);
-    setJobDataWithSample(null);
+    setSampleData(null);
     setError(null);
     setActiveTab("logs");
     setIsRawMode(false);
@@ -171,9 +173,9 @@ export function FullPageJobView({
     if (!jobData || !jobData.source) return "";
 
     const apiUrl = getAppConfig().api.baseUrl;
-    const endpoint = `${apiUrl}/v1/jobs/${jobId}?limit=5&offset=0`;
+    const endpoint = `${apiUrl}/v1/jobs/${jobId}/fetch?limit=5&offset=0`;
 
-    return `curl "${endpoint}"`;
+    return `curl -X POST "${endpoint}"`;
   };
 
   const shouldAutoRefresh =
@@ -400,24 +402,59 @@ export function FullPageJobView({
                             Loading preview...
                           </span>
                         </div>
-                      ) : jobDataWithSample?.result ? (
-                        <CodeBlock
-                          language="json"
-                          title="JSON Response"
-                          theme="dark"
-                          maxHeight="max-h-96"
-                        >
-                          {JSON.stringify(jobDataWithSample.result, null, 2)}
-                        </CodeBlock>
-                      ) : jobData.result ? (
-                        <CodeBlock
-                          language="json"
-                          title="JSON Response"
-                          theme="dark"
-                          maxHeight="max-h-96"
-                        >
-                          {JSON.stringify(jobData.result, null, 2)}
-                        </CodeBlock>
+                      ) : sampleData ? (
+                        <div className="space-y-3">
+                          {sampleData.error && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                              <div className="flex items-start">
+                                <div className="flex-shrink-0">
+                                  <svg
+                                    className="h-5 w-5 text-red-400"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </div>
+                                <div className="ml-3">
+                                  {!sampleData.data && (
+                                    <h3 className="text-sm font-medium text-red-800">
+                                      Partial Data Retrieved
+                                    </h3>
+                                  )}
+                                  <div className="mt-2 text-sm text-red-700">
+                                    {sampleData.error}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {sampleData.data && sampleData.data.length > 0 ? (
+                            <CodeBlock
+                              language="json"
+                              title={`JSON Response (${
+                                sampleData.data.length
+                              } items${
+                                sampleData.error ? " - Partial Data" : ""
+                              })`}
+                              theme="dark"
+                              maxHeight="max-h-96"
+                            >
+                              {JSON.stringify(sampleData.data, null, 2)}
+                            </CodeBlock>
+                          ) : (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+                              <p className="text-gray-600">
+                                No preview data available
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
                           <p className="text-gray-600">
