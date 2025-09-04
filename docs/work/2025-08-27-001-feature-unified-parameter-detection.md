@@ -40,30 +40,25 @@ Implement **Unified Parameter Detection** that combines pagination and dynamic p
 **Single Generated Function Handles All Parameters:**
 
 ```python
+from typing import Any
+
 def apply_parameters(request: dict[str, Any], **kwargs) -> dict[str, Any]:
-    def apply(dst: dict[str, Any], key: str):
-        value = kwargs.get(key)
+    def apply(dst: dict[str, Any], key: str, value: Any | None):
         if value is None:
             dst.pop(key, None)
         else:
             dst[key] = value
 
-    # Handle pagination parameters
     if 'page' in kwargs:
-        apply(request['queries'], 'page_num')
-        apply(request['post_data']['pagination'], 'page')
+        apply(request['queries'], 'page_num', kwargs['page'])
+        apply(request['post_data']['pagination'], 'page', kwargs['page'])
 
-    if 'limit' in kwargs:
-        apply(request['queries'], 'limit')
-        apply(request['post_data']['pagination'], 'size')
-
-    # Handle dynamic parameters
     if 'sortBy' in kwargs:
-        apply(request['queries'], 'sort')
-        apply(request['post_data']['filters'], 'sortBy')
+        apply(request['queries'], 'sort', kwargs['sortBy'])
+        apply(request['post_data']['filters'], 'sortBy', kwargs['sortBy'])
 
     if 'category' in kwargs:
-        apply(request['queries'], 'cat')
+        apply(request['queries'], 'cat', kwargs['category'])
 
     return request
 ```

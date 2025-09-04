@@ -132,7 +132,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
                     pg_info.page.key: str(start_page),
                     pg_info.limit.key: str(self.limit),
                 }
-                if test_data := self._fetch_data(request_detail, response_detail, parameters=test_state):
+                if test_data := await self._fetch_data(request_detail, response_detail, parameters=test_state):
                     page_size = min(len(test_data), self.limit)
             except RequestException:
                 page_size = response_detail.default_entity_count
