@@ -56,7 +56,7 @@ def get_value(request: Request, key: str) -> Any:
                 return v
             if isinstance(v, dict):
                 result = get_value_from_dict(v, key)
-                if result:
+                if result is not None:
                     return result
 
     if request.queries:
