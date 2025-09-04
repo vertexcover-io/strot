@@ -57,7 +57,7 @@ class CursorParameter(BaseModel):
                 continue
 
             for pattern in patterns:
-                if (output := pattern.test(response_text)) and len(output) == len(value):
+                if output := pattern.test(response_text):
                     cursor_values[value] = output
                     break
             else:
@@ -74,7 +74,7 @@ class CursorParameter(BaseModel):
 
         return new_cursor
 
-    def get_nullable_cursor(self) -> str:
+    def get_nullable_cursor(self) -> str | None:
         value = self.default_value
         for sub_value in self.pattern_map:
             # Replace the cursor sub_value with "null", handling quoted values properly
@@ -89,4 +89,4 @@ class CursorParameter(BaseModel):
                         i += 1
 
                 value = value.replace(sub_value, "null")
-        return value
+        return None if value == "null" else value
