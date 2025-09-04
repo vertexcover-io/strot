@@ -29,7 +29,7 @@ class LogEvent:
     queries: dict[str, Any] | None = None
     data: Any | None = None
     code: str | None = None
-    strategy: str | None = None
+    strategy: str | dict[str, Any] | None = None
     potential_pagination_parameters: dict[str, Any] | None = None
     # New unified parameter detection fields (inputs/outputs)
     request: dict[str, Any] | None = None
