@@ -53,7 +53,9 @@ class Tab:
         return self._responses
 
     @property
-    def plugin(self) -> Plugin | None:
+    def plugin(self) -> Plugin:
+        if self._plugin is None:
+            raise ValueError("Page is empty")
         return self._plugin
 
     async def reset(self) -> None:
