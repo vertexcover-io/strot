@@ -11,6 +11,9 @@ class Pattern(BaseModel):
     before: str
     after: str
 
+    def __len__(self) -> int:
+        return len(self.before) + len(self.after)
+
     @classmethod
     def generate_multiple(cls, input: str, output: str) -> list[Pattern]:
         """
@@ -43,10 +46,9 @@ class Pattern(BaseModel):
 
             # Generate patterns of different delimiter lengths for this occurrence
             for delim_len in range(min(20, len(before), len(after)), 0, -1):
-                pattern = cls(before=before[-delim_len:], after=after[:delim_len])
-                if pattern not in patterns:  # Avoid duplicates
-                    patterns.append(pattern)
+                patterns.append(cls(before=before[-delim_len:], after=after[:delim_len]))
 
+        patterns.sort(key=len, reverse=True)
         return patterns
 
     def test(self, input: str) -> str | None:
