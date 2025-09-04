@@ -26,7 +26,6 @@ from strot.type_adapter import TypeAdapter
 from strot.utils.image import draw_point_on_image, encode_image
 from strot.utils.request import (
     extract_potential_cursors,
-    get_potential_pagination_parameters,
     get_value,
 )
 from strot.utils.text import parse_python_code, text_match_ratio
@@ -317,10 +316,8 @@ class Analyzer:
         ):
             best_match_count, best_response_text = 0, None
 
-            main_req_potential_pg_params = get_potential_pagination_parameters(request)
             for response in responses:
-                potential_pg_params = get_potential_pagination_parameters(response.request)
-                if potential_pg_params and set(potential_pg_params).issubset(main_req_potential_pg_params):
+                if get_value(response.request, cursor_key) is not None:
                     match_count = sum(1 for v in potential_sub_cursors if v in response.value)
                     if match_count >= best_match_count:
                         best_match_count = match_count

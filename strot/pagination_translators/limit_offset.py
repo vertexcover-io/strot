@@ -260,7 +260,6 @@ class LimitOffsetTranslator(BasePaginationTranslator):
         all_cursors = []
         pg_info = request_detail.pagination_info
         start_cursor = await self.detect_start_cursor(request_detail, response_detail)
-        print("START", start_cursor)
         if start_cursor:
             all_cursors.append(start_cursor)
         state = dynamic_parameters | {pg_info.cursor.key: start_cursor}
