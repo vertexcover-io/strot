@@ -4,7 +4,6 @@ from typing import Any, Literal
 from patchright.async_api import Page
 
 from strot.schema.point import Point
-from strot.utils.text import text_match_ratio
 
 __all__ = ("Plugin",)
 
@@ -53,27 +52,7 @@ class Plugin:
         return await self.evaluate("([direction]) => window.scrollToNextView({ direction })", [direction])
 
     async def get_parent_container(self, text_sections: list[str]) -> str | None:
-        containers: list[dict[str, Any]] = await self.evaluate(
-            "([sections]) => window.getContainersWithTextSections(sections)", [text_sections]
-        )
-
-        if not containers:
-            return None
-
-        target_length = len(" ".join(text_sections))
-        for container in containers:
-            container["match_ratio"] = text_match_ratio(text_sections, container["text"])
-            container["text_length"] = len(container["text"])
-            container["extra_text_ratio"] = (
-                (len(container["text"]) - target_length) / target_length if target_length > 0 else 0
-            )
-
-        # Sort by match ratio (descending), then by extra text ratio (ascending - less extra text is better)
-        # Then by text length (descending - larger containers preferred if other factors are similar)
-        containers.sort(key=lambda x: (-x["match_ratio"], x["extra_text_ratio"], -x["text_length"]))
-
-        if (best_container := containers[0]) and best_container["match_ratio"] > 0.5:
-            return best_container["selector"]
+        return await self.evaluate("([sections]) => window.findCommonParent(sections)", [text_sections])
 
     async def get_last_visible_child(self, parent_container_selector: str) -> str | None:
         return await self.evaluate(
