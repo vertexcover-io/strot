@@ -7,7 +7,6 @@ __all__ = (
     "is_digit_value",
     "is_potential_cursor",
     "extract_potential_cursors",
-    "get_potential_pagination_parameters",
 )
 
 
@@ -64,30 +63,3 @@ def get_value(request: Request, key: str) -> Any:
     if isinstance(request.post_data, dict):
         return get_value_from_dict(request.post_data, key)
     return None
-
-
-def get_potential_pagination_parameters(request: Request) -> dict[str, Any] | None:
-    """
-    Extract potential pagination parameters from request queries and post data.
-
-    Args:
-        request: Request object
-
-    Returns:
-        Dictionary of potential pagination parameters or None if none found
-    """
-
-    def collect(d: dict[str, Any]):
-        collected = {}
-        for k, v in d.items():
-            if is_digit_value(v) or bool(extract_potential_cursors(v)):
-                collected[k] = v
-        return collected
-
-    result = {}
-    if request.queries:
-        result.update(collect(request.queries))
-    if isinstance(request.post_data, dict):
-        result.update(collect(request.post_data))
-
-    return result if result else None
