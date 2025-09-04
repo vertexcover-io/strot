@@ -83,28 +83,46 @@ class APIClient {
     return this.request<JobListResponse>(endpoint);
   }
 
-  async getJob(
+  async getJob(jobId: string): Promise<GetJobResponse> {
+    return this.request<GetJobResponse>(`/v1/jobs/${jobId}`);
+  }
+
+  async fetchJobData(
     jobId: string,
-    options?: { limit?: number; offset?: number },
-  ): Promise<GetJobResponse> {
+    options: {
+      limit?: number;
+      offset?: number;
+      dynamicParams?: Record<string, string>;
+    } = {},
+  ): Promise<{ data: any[]; error?: string }> {
     const searchParams = new URLSearchParams();
 
-    // Only add limit/offset if explicitly provided
-    if (options?.limit !== undefined) {
+    // Add limit and offset as query parameters
+    if (options.limit !== undefined) {
       searchParams.set("limit", options.limit.toString());
     }
-    if (options?.offset !== undefined) {
+    if (options.offset !== undefined) {
       searchParams.set("offset", options.offset.toString());
     }
 
     const queryString = searchParams.toString();
-    const endpoint = `/v1/jobs/${jobId}${queryString ? `?${queryString}` : ""}`;
+    const endpoint = `/v1/jobs/${jobId}/fetch${
+      queryString ? `?${queryString}` : ""
+    }`;
 
-    return this.request<GetJobResponse>(endpoint);
-  }
+    // Prepare form data for dynamic parameters
+    const formData = new FormData();
+    if (options.dynamicParams) {
+      Object.entries(options.dynamicParams).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+    }
 
-  async getJobWithSampleData(jobId: string): Promise<GetJobResponse> {
-    return this.getJob(jobId, { limit: 5, offset: 0 });
+    return this.request<{ data: any[]; error?: string }>(endpoint, {
+      method: "POST",
+      headers: {}, // Let fetch set the correct Content-Type for FormData
+      body: formData,
+    });
   }
 
   async createJob(jobData: CreateJobRequest): Promise<CreateJobResponse> {
