@@ -55,7 +55,7 @@ class Tab:
     @property
     def plugin(self) -> Plugin:
         if self._plugin is None:
-            raise ValueError("Page is empty")
+            raise RuntimeError("No page is loaded; call goto() first")
         return self._plugin
 
     async def reset(self) -> None:
