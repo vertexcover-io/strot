@@ -96,7 +96,7 @@ function escapeCSSIdentifier(identifier) {
 }
 
 /**
- * Helper function to generate a CSS selector for an element
+ * Helper function to generate a unique CSS selector for an element
  *
  * @param {HTMLElement} element - The element to generate a selector for
  * @returns {string} The CSS selector for the element
@@ -110,75 +110,10 @@ function generateCSSSelector(element) {
   let current = element;
 
   while (current && current !== document.body) {
-    let selector = current.tagName.toLowerCase();
-
-    if (current.className) {
-      const classes = Array.from(current.classList);
-      selector += `.${classes
-        .map((cls) => escapeCSSIdentifier(cls))
-        .join(".")}`;
-    }
-
-    if (current.parentElement) {
-      // First check if selector without nth-child is unique
-      const pathWithoutNth = [...path];
-      pathWithoutNth.unshift(selector);
-
-      if (current.parentElement.id) {
-        pathWithoutNth.unshift(
-          `#${escapeCSSIdentifier(current.parentElement.id)}`,
-        );
-      }
-
-      const testSelectorWithoutNth = pathWithoutNth.join(" > ");
-
-      // Check if selector without nth-child matches multiple elements
-      let needsNthChild = false;
-      try {
-        const foundElements = document.querySelectorAll(testSelectorWithoutNth);
-
-        if (foundElements.length > 1) {
-          needsNthChild = true;
-        }
-      } catch (error) {
-        // If selector is invalid, we'll try with nth-child
-        needsNthChild = true;
-      }
-
-      // Only add nth-child if the selector matches multiple elements
-      if (needsNthChild) {
-        // CSS nth-child counts ALL children, not just visible ones
-        const siblings = Array.from(current.parentElement.children);
-        const index = siblings.indexOf(current) + 1;
-
-        // Try with nth-child
-        const selectorWithNth = selector + `:nth-child(${index})`;
-        const pathWithNth = [...path];
-        pathWithNth.unshift(selectorWithNth);
-
-        if (current.parentElement.id) {
-          pathWithNth.unshift(
-            `#${escapeCSSIdentifier(current.parentElement.id)}`,
-          );
-        }
-
-        const testSelector = pathWithNth.join(" > ");
-
-        // Check if selector with nth-child works and is unique
-        try {
-          const found = document.querySelector(testSelector);
-          if (found === element) {
-            selector = selectorWithNth;
-          }
-          // If it doesn't work, keep selector without nth-child
-        } catch (error) {
-          // If selector is invalid, keep selector without nth-child
-        }
-      }
-    }
-
+    let selector = buildOptimalSelector(current);
     path.unshift(selector);
 
+    // Stop if parent has ID
     if (current.parentElement && current.parentElement.id) {
       path.unshift(`#${escapeCSSIdentifier(current.parentElement.id)}`);
       break;
@@ -188,6 +123,68 @@ function generateCSSSelector(element) {
   }
 
   return path.join(" > ");
+}
+
+/**
+ * Build the most minimal selector for an element
+ */
+function buildOptimalSelector(element) {
+  const tagName = element.tagName.toLowerCase();
+
+  // Try just the tag name first
+  let selector = tagName;
+  if (isUniqueAmongSiblings(element, selector)) {
+    return selector;
+  }
+
+  // Try with classes
+  if (element.className) {
+    const classes = Array.from(element.classList);
+    const classSelector =
+      tagName + `.${classes.map((cls) => escapeCSSIdentifier(cls)).join(".")}`;
+
+    if (isUniqueAmongSiblings(element, classSelector)) {
+      return classSelector;
+    }
+  }
+
+  // Need nth-child
+  const siblings = Array.from(element.parentElement.children);
+  const index = siblings.indexOf(element) + 1;
+
+  // Try tag + nth-child first (cleaner)
+  const tagWithNth = tagName + `:nth-child(${index})`;
+  if (isUniqueAmongSiblings(element, tagWithNth)) {
+    return tagWithNth;
+  }
+
+  // Fall back to tag + classes + nth-child
+  if (element.className) {
+    const classes = Array.from(element.classList);
+    return (
+      tagName +
+      `.${classes.map((cls) => escapeCSSIdentifier(cls)).join(".")}` +
+      `:nth-child(${index})`
+    );
+  }
+
+  return tagWithNth;
+}
+
+/**
+ * Check if a selector uniquely identifies the element among its siblings
+ */
+function isUniqueAmongSiblings(element, selector) {
+  if (!element.parentElement) return true;
+
+  try {
+    const matches = element.parentElement.querySelectorAll(
+      `:scope > ${selector}`,
+    );
+    return matches.length === 1 && matches[0] === element;
+  } catch (error) {
+    return false;
+  }
 }
 
 /**
@@ -255,104 +252,92 @@ function canScrollIntoView(element) {
   return true;
 }
 
+function normalizeText(text) {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 /**
- * Find all containers that contain all given text sections
+ * Simple approach: Find elements containing each section, then find their common parent
  *
  * @param {string[]} sections - Array of text sections to find
- * @returns {Object[]} Array of container objects with selector and text
+ * @returns {Object} Object containing the common parent element and its selector
  */
-function getContainersWithTextSections(sections) {
-  const allElements = getElementsInDOM();
+function findCommonParent(sections) {
+  if (!sections || sections.length === 0) return null;
 
-  // Normalize search sections once
-  const normalizedSections = sections.map((s) => s.replace(/\s+/g, "").trim());
+  const sectionElements = [];
 
-  // Find all potential container elements that contain all text sections
-  const potentialContainers = allElements.filter((container) => {
-    if (
-      container.tagName.toLowerCase() === "html" ||
-      container.tagName.toLowerCase() === "body"
-    ) {
-      return false;
-    }
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    if (!section) continue;
 
-    // Normalize whitespace for comparison
-    const containerText = container.textContent.replace(/\s+/g, "").trim();
+    let bestElement = null;
+    let smallestTextLength = Infinity;
 
-    const containerTextLower = containerText.toLowerCase();
-    const containsAllSections = normalizedSections.every(
-      (normalizedSection) => {
-        const normalizedSectionLower = normalizedSection.toLowerCase();
-        return containerTextLower.includes(normalizedSectionLower);
-      },
-    );
+    const allElements = getElementsInView(getElementsInDOM());
 
-    return containsAllSections;
-  });
+    for (const element of allElements) {
+      // Skip invalid elements
+      if (!element.textContent || element.textContent.trim() === "") continue;
+      if (["HTML", "HEAD", "BODY", "SCRIPT", "STYLE"].includes(element.tagName))
+        continue;
 
-  if (potentialContainers.length === 0) {
-    // If no single container has all sections, try to find the parent of containers with individual sections
-    // This handles cases where sections are from multiple items
-    const containersBySection = sections.map((section) => {
-      const sectionLower = section.replace(/\s+/g, "").trim().toLowerCase();
-      return allElements.filter((el) => {
-        if (el.tagName.toLowerCase() === "html") return false;
-        const text = el.textContent.replace(/\s+/g, "").trim().toLowerCase();
-        return text.includes(sectionLower) && text.length < 2000; // Focus on smaller containers
-      });
-    });
+      // Check if element contains the section text
+      if (
+        !normalizeText(element.textContent || "").includes(
+          normalizeText(section),
+        )
+      )
+        continue;
 
-    // Find common parents
-    const firstSectionContainers = containersBySection[0] || [];
-
-    if (firstSectionContainers.length > 0) {
-      // Get all potential parent containers
-      const parentCandidates = new Set();
-      firstSectionContainers.forEach((container) => {
-        let parent = container.parentElement;
-        while (parent && parent !== document.body) {
-          // Check if this parent contains most/all sections
-          const parentText = parent.textContent
-            .replace(/\s+/g, "")
-            .trim()
-            .toLowerCase();
-          const sectionsInParent = normalizedSections.filter((section) =>
-            parentText.includes(section.toLowerCase()),
-          );
-
-          if (
-            sectionsInParent.length >=
-            Math.ceil(normalizedSections.length * 0.6)
-          ) {
-            // At least 60% of sections
-            parentCandidates.add(parent);
-            break; // Don't go higher once we find a good parent
-          }
-          parent = parent.parentElement;
-        }
-      });
-
-      if (parentCandidates.size > 0) {
-        const parents = Array.from(parentCandidates);
-        const result = parents.map((container) => ({
-          selector: generateCSSSelector(container),
-          text: container.textContent.trim(),
-        }));
-        return result;
+      // Keep the one with least text (most specific)
+      const textLength = element.textContent.length;
+      if (textLength < smallestTextLength) {
+        smallestTextLength = textLength;
+        bestElement = element;
       }
     }
 
-    return [];
+    if (bestElement) {
+      sectionElements.push(bestElement);
+    } else {
+      return null;
+    }
   }
 
-  const result = potentialContainers.map((container) => {
-    return {
-      selector: generateCSSSelector(container),
-      text: container.textContent.trim(),
-    };
-  });
+  // STEP 2: Find the common parent of all these elements
+  if (sectionElements.length === 0) return null;
+  if (sectionElements.length === 1) return sectionElements[0];
 
-  return result;
+  // Start with first element and go up the DOM tree
+  let currentParent = sectionElements[0];
+
+  while (currentParent) {
+    // Check if this parent contains ALL section elements
+    const containsAll = sectionElements.every((element) =>
+      currentParent.contains(element),
+    );
+
+    if (containsAll) {
+      // Found a parent that contains all elements
+      const selector = generateCSSSelector(currentParent);
+
+      const result = {
+        element: currentParent,
+        selector: selector,
+        tagName: currentParent.tagName.toLowerCase(),
+        className: currentParent.className || "",
+        childElements: sectionElements.length,
+      };
+
+      return result;
+    }
+
+    // Move up to parent
+    currentParent = currentParent.parentElement;
+  }
+
+  return null;
 }
 
 /**
@@ -394,6 +379,6 @@ window.getElementsInView = getElementsInView;
 window.generateCSSSelector = generateCSSSelector;
 window.isElementCompletelyOutsideViewport = isElementCompletelyOutsideViewport;
 window.canScrollIntoView = canScrollIntoView;
-window.getContainersWithTextSections = getContainersWithTextSections;
+window.findCommonParent = findCommonParent;
 window.getLastVisibleChild = getLastVisibleChild;
 window.strotPluginInjected = true;
