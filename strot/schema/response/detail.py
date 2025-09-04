@@ -24,6 +24,6 @@ class ResponseDetail(BaseSchema):
                 exec(self.code_to_extract_data, self._namespace)  # noqa: S102
 
             if "extract_data" in self._namespace:
-                return self._namespace["extract_data"](text)
+                return self._namespace["extract_data"](text) or []
         except Exception:
             return []

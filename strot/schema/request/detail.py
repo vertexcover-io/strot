@@ -72,10 +72,9 @@ class RequestDetail(BaseSchema):
                     self._namespace["apply_parameters"](self.request.model_dump(), **parameters)
                 )
                 request.headers = self.request.headers
+                return request
         except Exception:  # noqa: S110
             pass
-        else:
-            return request
 
         # Backward compatible and used as fallback
         is_post_data_dict = isinstance(self.request.post_data, dict)
