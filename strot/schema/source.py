@@ -11,9 +11,15 @@ class Source(BaseSchema):
     response_detail: ResponseDetail
 
     async def generate_data(self, *, limit: int, offset: int, **dynamic_parameters):
-        for key in dynamic_parameters:
-            if key not in self.request_detail.dynamic_parameter_keys:
-                raise ValueError(f"Dynamic parameter {key} not found in request detail")
+        unknown = set(dynamic_parameters) - set(self.request_detail.dynamic_parameter_keys)
+        if unknown:
+            raise ValueError(
+                f"Unknown dynamic parameter(s): {", ".join(sorted(unknown))}. "
+                f"Allowed: {", ".join(sorted(self.request_detail.dynamic_parameter_keys))}"
+            )
+
+        if limit < 0 or offset < 0:
+            raise ValueError("limit and offset must be non-negative")
 
         translator = LimitOffsetTranslator(limit, offset)
         async for data in translator.generate_data(
