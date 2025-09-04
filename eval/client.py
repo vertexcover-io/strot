@@ -52,27 +52,22 @@ class StrotClient:
         else:
             return job_data
 
-    async def fetch_data(self, job_id: str, *, limit: int, offset: int) -> list[dict[str, Any]]:
-        """Fetch job data"""
+    async def fetch_data(self, job_id: str, *, limit: int, offset: int, **dynamic_params) -> list[dict[str, Any]]:
+        """Fetch job data using the new POST /jobs/{job-id}/fetch endpoint"""
 
         self._logger.info("fetch-data", job_id=job_id, limit=limit, offset=offset, status="pending")
         try:
-            response = await self._api_client.get(
-                f"/v1/jobs/{job_id}",
+            response = await self._api_client.post(
+                f"/v1/jobs/{job_id}/fetch",
                 params={"limit": limit, "offset": offset},
+                data=dynamic_params,  # Send dynamic parameters as form data
                 timeout=None,
                 headers={"Accept": "application/json"},
             )
             response.raise_for_status()
-            json_resposnse = response.json()
-            result = json_resposnse.get("result") or {}
-            if "error" in result:
-                self._logger.info(
-                    "fetch-data", job_id=job_id, limit=limit, offset=offset, status="failed", reason=result["error"]
-                )
-                return []
+            json_response = response.json()
 
-            data = result.get(json_resposnse.get("label")) or []
+            data = json_response.get("data", [])
             self._logger.info(
                 "fetch-data", job_id=job_id, limit=limit, offset=offset, status="completed", entity_count=len(data)
             )
