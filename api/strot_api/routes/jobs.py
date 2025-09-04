@@ -60,7 +60,6 @@ class GetJobResponse(BaseModel):
     error: str | None = None
     # when job is ready
     source: Source | OldSource | None = None
-    result: dict[str, Any] | None = None
 
 
 class JobListItem(BaseModel):
@@ -81,6 +80,11 @@ class JobListResponse(BaseModel):
     limit: int
     offset: int
     has_next: bool
+
+
+class FetchDataResponse(BaseModel):
+    data: list[dict[str, Any]]
+    error: str | None = None
 
 
 @router.post("", response_model=CreateJobResponse, status_code=202)
@@ -188,11 +192,8 @@ async def list_jobs(
 
 @router.get("/{job_id}", response_model=GetJobResponse)
 async def get_job(
-    raw_request: Request,
     job_id: UUID,
     db: DBSessionDependency,
-    limit: int | None = Query(None, ge=1, description="Limit for data extraction (optional)"),
-    offset: int | None = Query(None, ge=0, description="Offset for data extraction (optional)"),
 ):
     from sqlalchemy.orm import selectinload
 
@@ -231,40 +232,71 @@ async def get_job(
                 # If S3 check fails, silently continue (don't fail the request)
                 pass
 
-    result = None
-    label_name = job.label.name
-
-    # Only extract data if limit/offset are explicitly provided
-    if job.status == "ready" and job.source and limit is not None:
-        source = TypeAdapter(OldSource | Source).validate_python(job.source)
-        result = {label_name: [], "count": 0}
-        parameters = {}
-        if raw_request.query_params:
-            parameters = raw_request.query_params
-        try:
-            async for data in source.generate_data(**{**parameters, "limit": limit, "offset": offset or 0}):
-                result[label_name].extend(data)
-
-            result["count"] = len(result[label_name])
-        except Exception as e:
-            result["error"] = f"Source request failed: {e}"
-
-        job.usage_count += 1
-        job.last_used_at = datetime.now(UTC)
-        await db.commit()
-        await db.refresh(job)
-
     return GetJobResponse(
         url=job.url,
-        label=label_name,
+        label=job.label.name,
         job_id=job.id,
         initiated_at=job.initiated_at,
         status=job.status,
         completed_at=job.completed_at,
         error=job.error,
         source=job.source,
-        result=result,
     )
+
+
+@router.post("/{job_id}/fetch", response_model=FetchDataResponse)
+async def fetch_job_data(
+    request: Request,
+    job_id: UUID,
+    db: DBSessionDependency,
+    limit: int = Query(5, ge=1, description="Limit for data extraction"),
+    offset: int = Query(0, ge=0, description="Offset for data extraction"),
+):
+    """Fetch data from a ready job with optional dynamic parameters."""
+    from sqlalchemy.orm import selectinload
+
+    # Get the job
+    db_result = await db.execute(select(Job).options(selectinload(Job.label)).where(Job.id == job_id))
+    job = db_result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != "ready":
+        if job.status == "pending":
+            detail = f"Job {job_id!s} is still pending"
+        else:
+            detail = f"Job {job_id!s} has failed with error: {job.error}"
+        raise HTTPException(status_code=400, detail=detail)
+
+    if not job.source:
+        raise HTTPException(status_code=404, detail="Job source not available")
+
+    # Parse the source
+    source = TypeAdapter(OldSource | Source).validate_python(job.source)
+
+    # Get dynamic parameters from form data
+    form_data = await request.form()
+    dynamic_params = dict(form_data)
+
+    # Combine query params (limit, offset) with dynamic params from form
+    all_params = {**dynamic_params, "limit": limit, "offset": offset}
+
+    # Fetch data
+    result_data = []
+    error_message = None
+    try:
+        async for data in source.generate_data(**all_params):
+            result_data.extend(data)
+    except Exception as e:
+        error_message = f"Source request failed: {e}"
+
+    # Update usage tracking
+    job.usage_count += 1
+    job.last_used_at = datetime.now(UTC)
+    await db.commit()
+
+    return FetchDataResponse(data=result_data, error=error_message)
 
 
 @router.delete("/{job_id}", status_code=204)
