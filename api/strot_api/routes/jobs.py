@@ -187,7 +187,7 @@ async def list_jobs(
 
 
 @router.get("/{job_id}", response_model=GetJobResponse)
-async def get_job(  # noqa: C901
+async def get_job(
     raw_request: Request,
     job_id: UUID,
     db: DBSessionDependency,
@@ -234,19 +234,15 @@ async def get_job(  # noqa: C901
     result = None
     label_name = job.label.name
 
-    dynamic_parameters = {}
-    if raw_request.query_params:
-        for k, v in raw_request.query_params.items():
-            if k in ["limit", "offset"]:
-                continue
-            dynamic_parameters[k] = v
-
     # Only extract data if limit/offset are explicitly provided
     if job.status == "ready" and job.source and limit is not None:
         source = TypeAdapter(OldSource | Source).validate_python(job.source)
-        result = {label_name: []}
+        result = {label_name: [], "count": 0}
+        parameters = {}
+        if raw_request.query_params:
+            parameters = raw_request.query_params
         try:
-            async for data in source.generate_data(limit=limit, offset=offset or 0, **dynamic_parameters):
+            async for data in source.generate_data(**{**parameters, "limit": limit, "offset": offset or 0}):
                 result[label_name].extend(data)
 
             result["count"] = len(result[label_name])
