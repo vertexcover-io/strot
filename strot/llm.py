@@ -27,9 +27,7 @@ class LLMInput(BaseModel):
 
     _img_type: str = PrivateAttr(default="")
 
-    class Config:
-        extra = "ignore"
-        frozen = True
+    model_config = {"extra": "ignore", "frozen": True}
 
     @model_validator(mode="after")
     def validate(self) -> LLMInput:
@@ -52,8 +50,7 @@ class LLMCompletion(BaseModel):
     Completion from an LLM: content string plus token metadata.
     """
 
-    class Config:
-        frozen = True
+    model_config = {"frozen": True}
 
     value: str
     input_tokens: int
