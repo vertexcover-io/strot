@@ -15,7 +15,7 @@ __all__ = ("RequestDetail",)
 class RequestDetail(BaseSchema):
     request: Request
     pagination_info: PaginationInfo | None = None
-    dynamic_parameter_keys: list[str] = Field(default_factory=list)
+    dynamic_parameters: dict[str, Any] = Field(default_factory=dict)
     code_to_apply_parameters: str | None = None
 
     _client: rnet.Client | None = PrivateAttr(default=None)

@@ -191,7 +191,7 @@ class JobEvaluator:
             if source_instance.request_detail.pagination_info:
                 pagination_keys_actual = source_instance.request_detail.pagination_info.keys
 
-            dynamic_keys_actual = source_instance.request_detail.dynamic_parameter_keys
+            dynamic_keys_actual = list(source_instance.request_detail.dynamic_parameters)
 
             pagination_keys_matching = "no"
             if expected_pagination_keys and pagination_keys_actual:
@@ -524,7 +524,7 @@ async def get_pagination_and_dynamic_parameter_keys(
     pagination_keys = []
     if request_detail.pagination_info:
         pagination_keys = request_detail.pagination_info.keys
-    return pagination_keys, request_detail.dynamic_parameter_keys
+    return pagination_keys, list(request_detail.dynamic_parameters)
 
 
 async def get_entity_count(
