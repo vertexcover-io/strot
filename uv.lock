@@ -1526,7 +1526,7 @@ wheels = [
 
 [[package]]
 name = "strot"
-version = "1.2.0.post33.dev0+3dc2519"
+version = "1.2.0.post37.dev0+3474ebe"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1576,7 +1576,7 @@ requires-dist = [
     { name = "json-repair", specifier = ">=0.44.1" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "openai", specifier = ">=1.76.0" },
-    { name = "patchright", specifier = ">=1.52.5" },
+    { name = "patchright", specifier = "==1.52.5" },
     { name = "pillow", specifier = ">=11.2.1" },
     { name = "pydantic", specifier = ">=2.11.3" },
     { name = "python-magic", specifier = ">=0.4.27" },
