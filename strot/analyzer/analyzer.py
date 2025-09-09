@@ -188,7 +188,7 @@ class Analyzer:
         if sections := result.text_sections:
             response_to_return = None
             container = await tab.plugin.get_parent_container(sections)
-            for response in tab.responses:
+            for idx, response in enumerate(list(tab.responses)):
                 score = text_match_ratio(sections, response.value)
                 if score < 0.5:
                     continue
@@ -197,6 +197,7 @@ class Analyzer:
                     response.preprocessor = HTMLResponsePreprocessor(element_selector=container)
 
                 response_to_return = response
+                tab.responses.pop(idx)
                 break
 
             skip = False
@@ -359,9 +360,6 @@ class Analyzer:
     async def build_request_detail(self, request: Request, *responses: Response) -> RequestDetail:
         """
         Detect both pagination and dynamic parameters, generating parameter application code.
-
-        Returns:
-            Tuple of (apply_parameters_code, pagination_keys, dynamic_parameter_keys)
         """
         type_adapter = TypeAdapter(prompts.schema.ParameterDetectionResult)
         schema = type_adapter.generate_schema(drop_titles=True)
@@ -426,7 +424,7 @@ class Analyzer:
         return RequestDetail(
             request=request,
             pagination_info=self.build_pagination_info(request, result.pagination_keys, *responses),
-            dynamic_parameter_keys=result.dynamic_parameter_keys,
+            dynamic_parameters={k: get_value(request, k) for k in result.dynamic_parameter_keys},
             code_to_apply_parameters=result.apply_parameters_code,
         )
 
@@ -506,6 +504,7 @@ class Analyzer:
         max_steps: int = 30,
     ) -> Source | None:
         steps = MutableRange(0, max_steps)
+        captured_responses = []
         request_detail, response = None, None
         while True:
             self._logger.info("analysis", action="request-detection", status="pending")
@@ -516,10 +515,11 @@ class Analyzer:
                 )
                 break
 
+            captured_responses.append(response)
             self._logger.info("analysis", action="request-detection", status="success")
 
             self._logger.info("analysis", action="parameter-detection", status="pending")
-            request_detail = await self.build_request_detail(response.request, *tab.responses)
+            request_detail = await self.build_request_detail(response.request, *(tab.responses + captured_responses))
             if request_detail.pagination_info is None:
                 self._logger.info(
                     "analysis", action="parameter-detection", status="failed", reason="No pagination detected."
