@@ -266,20 +266,25 @@ function canScrollIntoView(element) {
  * @returns {string} Normalized text
  */
 function normalizeText(text) {
-  return text.replace(/\s+/g, " ").trim().toLowerCase();
+  return text
+    .replace(/\s+/g, "")
+    .replace(/[\p{P}\p{S}]/gu, "")
+    .trim()
+    .toLowerCase();
 }
 
 /**
  * Simple approach: Find elements containing each section, then find their common parent
  *
  * @param {string[]} sections - Array of text sections to find
+ * @param {number} threshold - Minimum percentage of sections that must be found
  * @returns {string|null} CSS selector of the common parent element
  */
-function findCommonParent(sections) {
+function findCommonParent(sections, threshold = 0.8) {
   if (!sections || sections.length === 0) return null;
 
   const sectionElements = [];
-  const allElements = getElementsInView(getElementsInDOM());
+  const elementsInView = getElementsInView(getElementsInDOM());
 
   for (let i = 0; i < sections.length; i++) {
     const section = normalizeText(sections[i]);
@@ -288,13 +293,24 @@ function findCommonParent(sections) {
     let bestElement = null;
     let smallestTextLength = Infinity;
 
-    for (const element of allElements) {
-      // Skip invalid elements
+    for (const element of elementsInView) {
       if (["HTML", "HEAD", "BODY", "SCRIPT", "STYLE"].includes(element.tagName))
         continue;
       if (!element.textContent || element.textContent.trim() === "") continue;
 
-      // Check if element contains the section text
+      // Ensure DOM ordering: current element should come after at least one captured element or be the same element
+      if (sectionElements.length > 0) {
+        const sameOrAfter = sectionElements.some(
+          (capturedElement) =>
+            capturedElement === element ||
+            capturedElement.compareDocumentPosition(element) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+        if (!sameOrAfter) {
+          continue;
+        }
+      }
+
       if (!normalizeText(element.textContent || "").includes(section)) continue;
 
       // Keep the one with least text (most specific)
@@ -305,11 +321,15 @@ function findCommonParent(sections) {
       }
     }
 
-    if (!bestElement) return null; // require all sections to be located
+    if (!bestElement) continue;
     sectionElements.push(bestElement);
   }
 
-  // STEP 2: Find the common parent of all these elements
+  const matchThreshold = Math.ceil(sections.length * threshold);
+  if (sectionElements.length < matchThreshold) {
+    return null;
+  }
+
   if (sectionElements.length === 0) return null;
   if (sectionElements.length === 1)
     return generateCSSSelector(sectionElements[0]);
@@ -318,14 +338,12 @@ function findCommonParent(sections) {
   let currentParent = sectionElements[0];
 
   while (currentParent) {
-    // Check if this parent contains ALL section elements
     const containsAll = sectionElements.every((element) =>
       currentParent.contains(element),
     );
 
     if (containsAll) return generateCSSSelector(currentParent);
 
-    // Move up to parent
     currentParent = currentParent.parentElement;
   }
 
