@@ -260,35 +260,29 @@ function normalizeText(text) {
  * Simple approach: Find elements containing each section, then find their common parent
  *
  * @param {string[]} sections - Array of text sections to find
- * @returns {Object} Object containing the common parent element and its selector
+ * @returns {string|null} CSS selector of the common parent element
  */
 function findCommonParent(sections) {
   if (!sections || sections.length === 0) return null;
 
   const sectionElements = [];
+  const allElements = getElementsInView(getElementsInDOM());
 
   for (let i = 0; i < sections.length; i++) {
-    const section = sections[i];
+    const section = normalizeText(sections[i]);
     if (!section) continue;
 
     let bestElement = null;
     let smallestTextLength = Infinity;
 
-    const allElements = getElementsInView(getElementsInDOM());
-
     for (const element of allElements) {
       // Skip invalid elements
-      if (!element.textContent || element.textContent.trim() === "") continue;
       if (["HTML", "HEAD", "BODY", "SCRIPT", "STYLE"].includes(element.tagName))
         continue;
+      if (!element.textContent || element.textContent.trim() === "") continue;
 
       // Check if element contains the section text
-      if (
-        !normalizeText(element.textContent || "").includes(
-          normalizeText(section),
-        )
-      )
-        continue;
+      if (!normalizeText(element.textContent || "").includes(section)) continue;
 
       // Keep the one with least text (most specific)
       const textLength = element.textContent.length;
@@ -301,13 +295,14 @@ function findCommonParent(sections) {
     if (bestElement) {
       sectionElements.push(bestElement);
     } else {
-      return null;
+      break;
     }
   }
 
   // STEP 2: Find the common parent of all these elements
   if (sectionElements.length === 0) return null;
-  if (sectionElements.length === 1) return sectionElements[0];
+  if (sectionElements.length === 1)
+    return generateCSSSelector(sectionElements[0]);
 
   // Start with first element and go up the DOM tree
   let currentParent = sectionElements[0];
@@ -318,20 +313,7 @@ function findCommonParent(sections) {
       currentParent.contains(element),
     );
 
-    if (containsAll) {
-      // Found a parent that contains all elements
-      const selector = generateCSSSelector(currentParent);
-
-      const result = {
-        element: currentParent,
-        selector: selector,
-        tagName: currentParent.tagName.toLowerCase(),
-        className: currentParent.className || "",
-        childElements: sectionElements.length,
-      };
-
-      return result;
-    }
+    if (containsAll) return generateCSSSelector(currentParent);
 
     // Move up to parent
     currentParent = currentParent.parentElement;
