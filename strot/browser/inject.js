@@ -92,7 +92,10 @@ function escapeCSSIdentifier(identifier) {
   }
 
   // Fallback: manually escape special characters
-  return identifier.replace(/[!"#$%&'()*+,.\/:;<=>?@\[\\\]^`{|}~]/g, "\\$&");
+  return identifier
+    .replace(/^([-0-9])/, "\\$1") // escape leading digit or hyphen
+    .replace(/\s+/g, "\\ ") // escape whitespace
+    .replace(/[!"#$%&'()*+,.\/:;<=>?@\[\\\]^`{|}~]/g, "\\$&");
 }
 
 /**
@@ -102,6 +105,10 @@ function escapeCSSIdentifier(identifier) {
  * @returns {string} The CSS selector for the element
  */
 function generateCSSSelector(element) {
+  if (element === document.body) {
+    return "body";
+  }
+
   if (element.id) {
     return `#${escapeCSSIdentifier(element.id)}`;
   }
@@ -252,6 +259,12 @@ function canScrollIntoView(element) {
   return true;
 }
 
+/**
+ * Normalize text by removing extra whitespace and converting to lowercase
+ *
+ * @param {string} text - Text to normalize
+ * @returns {string} Normalized text
+ */
 function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
