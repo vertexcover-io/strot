@@ -305,11 +305,8 @@ function findCommonParent(sections) {
       }
     }
 
-    if (bestElement) {
-      sectionElements.push(bestElement);
-    } else {
-      break;
-    }
+    if (!bestElement) return null; // require all sections to be located
+    sectionElements.push(bestElement);
   }
 
   // STEP 2: Find the common parent of all these elements
