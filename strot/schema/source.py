@@ -14,8 +14,8 @@ class Source(BaseSchema):
         unknown = set(dynamic_parameters) - set(self.request_detail.dynamic_parameters)
         if unknown:
             raise ValueError(
-                f"Unknown dynamic parameter(s): {", ".join(sorted(unknown))}. "
-                f"Allowed: {", ".join(sorted(self.request_detail.dynamic_parameters))}"
+                f'Unknown dynamic parameter(s): {", ".join(sorted(unknown))}. '
+                f'Allowed: {", ".join(sorted(self.request_detail.dynamic_parameters))}'
             )
 
         if limit < 0 or offset < 0:
