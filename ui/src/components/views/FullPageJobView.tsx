@@ -421,9 +421,13 @@ export function FullPageJobView({
                                   </svg>
                                 </div>
                                 <div className="ml-3">
-                                  {!sampleData.data && (
+                                  {sampleData.data.length > 0 ? (
                                     <h3 className="text-sm font-medium text-red-800">
                                       Partial Data Retrieved
+                                    </h3>
+                                  ) : (
+                                    <h3 className="text-sm font-medium text-red-800">
+                                      Data fetch failed
                                     </h3>
                                   )}
                                   <div className="mt-2 text-sm text-red-700">

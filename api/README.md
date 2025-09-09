@@ -109,10 +109,10 @@ Example:
 
 ```bash
 # Check job status
-curl GET /v1/jobs/12345678-1234-1234-1234-123456789012
+curl GET http://localhost:8000/v1/jobs/12345678-1234-1234-1234-123456789012
 
 # Fetch data with dynamic parameters
-curl -X POST /v1/jobs/12345678-1234-1234-1234-123456789012/fetch?limit=20&offset=0 \
+curl -X POST http://localhost:8000/v1/jobs/12345678-1234-1234-1234-123456789012/fetch?limit=20&offset=0 \
      -d "sortBy=price&category=electronics&brand=apple"
 ```
 
