@@ -9,8 +9,6 @@ from json_schema_to_pydantic import create_model
 
 import strot
 
-from .settings import settings
-
 
 @dataclass
 class AppContext:
@@ -19,13 +17,12 @@ class AppContext:
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP):
+    from .settings import settings
+
     async with strot.launch_browser(
         settings.BROWSER_MODE_OR_WS_URL,
     ) as browser:
-        try:
-            yield AppContext(browser=browser)
-        finally:
-            pass
+        yield AppContext(browser=browser)
 
 
 mcp = FastMCP("strotmcp", lifespan=app_lifespan)
