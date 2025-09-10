@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     @classmethod
     def set_anthropic_api_key(cls, value: str):
         os.environ["STROT_ANTHROPIC_API_KEY"] = value
+        return value
 
 
 settings = Settings()
