@@ -42,7 +42,7 @@ Repository = "https://github.com/vertexcover-io/strot"
 
 [project.scripts]
 stroteval = "eval.__main__:app"
-strotmcp = "mcp_server.__main__:run"
+strotmcp = "mcp_server.__main__:app"
 
 [tool.uv]
 dev-dependencies = [
@@ -62,8 +62,10 @@ eval = [
     "pydantic-settings>=2.10.1",
 ]
 mcp = [
+    "cyclopts>=3.22.3",
     "fastmcp>=2.12.2",
     "json-schema-to-pydantic>=0.4.1",
+    "pydantic-settings>=2.10.1",
 ]
 
 [build-system]
