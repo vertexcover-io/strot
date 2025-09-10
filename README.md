@@ -130,6 +130,76 @@ if __name__ == "__main__":
     asyncio.run(get_products())
 ```
 
+## 🔌 MCP Server
+
+Strot provides an MCP (Model Context Protocol) server that enables MCP clients like Claude to analyze websites and discover their internal APIs directly.
+
+### Setup
+
+```bash
+git clone https://github.com/vertexcover-io/strot.git
+cd strot && uv sync --group mcp
+```
+
+Set environment variables:
+
+```bash
+export STROT_ANTHROPIC_API_KEY=sk-ant-apiXXXXXX
+export STROT_BROWSER_MODE_OR_WS_URL=headless  # or 'headed' or ws://browser-url
+```
+
+If you want to use a hosted browser, you could do the following:
+
+Run a headless server inside docker
+
+```bash
+docker run -d --name browser-server -p 5678:5678 synacktra/patchright-headless-server
+export STROT_BROWSER_MODE_OR_WS_URL=ws://localhost:5678/patchright
+```
+
+Or, connect to a remote browser server:
+
+```bash
+export STROT_BROWSER_MODE_OR_WS_URL=wss://...
+```
+
+### Usage
+
+```
+$ uv run strotmcp --help
+Usage: strotmcp [OPTIONS]
+
+╭─ Commands ──────────────────────────────────────────────────────────────────────╮
+│ --help -h  Display this message and exit.                                       │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+╭─ Parameters ────────────────────────────────────────────────────────────────────╮
+│ --transport  -t  [choices: stdio, http, sse, streamable-http] [default: stdio]  │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+```
+
+#### With Claude Code
+
+- `stdio` transport
+
+  ```bash
+  claude mcp add strot-mcp "uv run strotmcp" --transport stdio \
+    --env STROT_ANTHROPIC_API_KEY=$STROT_ANTHROPIC_API_KEY STROT_BROWSER_MODE_OR_WS_URL=$STROT_BROWSER_MODE_OR_WS_URL
+  ```
+
+- `sse`, `http`, `streamable-http` transports
+
+  Run the MCP server with the desired transport in separate terminal:
+
+  ```bash
+  uv run strotmcp -t sse
+  ```
+
+  Add the MCP server to Claude:
+
+  ```bash
+  claude mcp add strot-mcp http://127.0.0.1:8000/sse --transport sse
+  ```
+
 ## 🧪 Evaluation
 
 Test and validate Strot's analysis accuracy across different websites and individual components. The evaluation system supports five input types:
