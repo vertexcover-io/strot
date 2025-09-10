@@ -1,12 +1,15 @@
-import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
+from cyclopts import App, Parameter
 from fastmcp import Context, FastMCP
+from fastmcp.server.server import Transport
 from json_schema_to_pydantic import create_model
 
 import strot
+
+from .settings import settings
 
 
 @dataclass
@@ -16,28 +19,35 @@ class AppContext:
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP):
-    async with strot.launch_browser("headed") as browser:
+    async with strot.launch_browser(
+        settings.BROWSER_MODE_OR_WS_URL,
+    ) as browser:
         try:
             yield AppContext(browser=browser)
         finally:
             pass
 
 
-app = FastMCP("strot-mcp", lifespan=app_lifespan)
+mcp = FastMCP("strotmcp", lifespan=app_lifespan)
+
+app = App(name="strotmcp", version_flags=[])
 
 
-@app.tool()
-async def analyze(url: str, query: str, output_schema: dict[str, Any], ctx: Context) -> str:
+@mcp.tool()
+async def analyze_and_find_source(ctx: Context, url: str, query: str, output_schema: dict[str, Any]) -> str:
     """
-    Analyze a web page to discover source of the requested data.
+    Analyze a web page to discover source of the expected data.
+    Do not mention anything regarding finding the source in the query or output schema.
 
     Args:
         url: The target web page URL to analyze
-        query: The query defining what kind of data to look for in the webpage
-        output_schema: JSON schema to use for structured data extraction from captured api response. This only contains the fields that the user requested from the api response. Format: {\"type\": \"object\", \"properties\": {<user requested fields>}, \"required\": [...]}
+        query: The query should be a description of the DATA we are looking for in the webpage
+        output_schema: JSON schema to use for structured data extraction from responses. \
+            The schema should be for a single DATA entity as analyzer treats the given schema as list of DATA entities. \
+            Format should be: {\"type\": \"object\", \"properties\": {<user requested fields>}, \"required\": [...]}
 
     Returns:
-        Data containing source request and response details
+        Source object containing all the information from replaying/making paginated requests to code for extracting structured data from the responses.
     """
     try:
         source = await strot.analyze(
@@ -56,12 +66,13 @@ async def analyze(url: str, query: str, output_schema: dict[str, Any], ctx: Cont
         await ctx.error(f"Error during analysis: {e!s}")
         raise Exception(f"Error during analysis: {e!s}") from e
     else:
-        return json.dumps(source.model_dump(), indent=2)
+        return source.model_dump_json(indent=2, exclude_none=True)
 
 
-def run():
-    app.run(transport="stdio")
+@app.default
+def run(*, transport: Annotated[Transport, Parameter(name=("-t", "--transport"))] = "stdio"):
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":
-    run()
+    app()
