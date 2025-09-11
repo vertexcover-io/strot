@@ -97,7 +97,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
             if not response_text or response_text == last_response_text:
                 break
             last_response_text = response_text
-            data = response_detail.extract_data(response_text)
+            data = await response_detail.extract_data(response_text)
 
             # Detect API's actual limit on first request
             if first_request:
@@ -173,7 +173,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
                 break
 
             last_response_text = response_text
-            data = response_detail.extract_data(response_text)
+            data = await response_detail.extract_data(response_text)
             if not data:
                 break
 
@@ -232,7 +232,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
                 break
             last_response_text = response_text
 
-            data = response_detail.extract_data(response_text)
+            data = await response_detail.extract_data(response_text)
             if not data:
                 break
 
@@ -290,7 +290,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
                         continue
                 break
             last_response_text = response_text
-            data = response_detail.extract_data(response_text)
+            data = await response_detail.extract_data(response_text)
 
             # Detect API's actual limit on first request
             if pg_info.limit and first_request and len(data) < self.limit:
