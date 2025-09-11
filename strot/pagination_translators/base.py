@@ -11,7 +11,7 @@ class BasePaginationTranslator:
         self, request_detail: RequestDetail, response_detail: ResponseDetail, parameters: dict[str, Any]
     ) -> list:
         response = await request_detail.make_request(parameters=parameters)
-        return response_detail.extract_data(await response.text())
+        return await response_detail.extract_data(await response.text())
 
     async def detect_start_page(self, request_detail: RequestDetail, response_detail: ResponseDetail) -> int:
         pg_info = request_detail.pagination_info
