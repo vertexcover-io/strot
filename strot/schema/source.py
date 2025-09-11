@@ -1,3 +1,4 @@
+from strot.code_executor import CodeExecutorType
 from strot.pagination_translators import LimitOffsetTranslator
 from strot.schema.base import BaseSchema
 from strot.schema.request import PaginationInfo, Request, RequestDetail
@@ -9,6 +10,11 @@ __all__ = ("Source", "OldSource")
 class Source(BaseSchema):
     request_detail: RequestDetail
     response_detail: ResponseDetail
+
+    def set_code_executor(self, executor_type: CodeExecutorType) -> None:
+        """Set the code executor type for both request and response details."""
+        self.request_detail.set_code_executor(executor_type)
+        self.response_detail.set_code_executor(executor_type)
 
     async def generate_data(self, *, limit: int, offset: int, **dynamic_parameters):
         unknown = set(dynamic_parameters) - set(self.request_detail.dynamic_parameters)
