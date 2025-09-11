@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.0] - 2025-09-11
+
+## 🚀 Features
+
+- feat: support for dynamic filter parameter detection (#47) @synacktraa
+- Feat: Separate Job Status Check and Data Fetching into Distinct Endpoints (#48) @synacktraa
+- Refactor: Optimize Parent Container Detection (#49) @synacktraa
+
+## 🔄 Other Changes
+
+- feat: add mcp server (#51) @synacktraa
+
+
+
 ## [v1.2.0] - 2025-08-28
 
 ## 🚀 Features
