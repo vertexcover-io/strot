@@ -4,6 +4,7 @@ from typing import Any
 import rnet
 from pydantic import Field, PrivateAttr
 
+from strot.code_executor import CodeExecutorT, CodeExecutorType, create_executor
 from strot.exceptions import RequestException
 from strot.schema.base import BaseSchema
 from strot.schema.request.pagination_info import PaginationInfo
@@ -19,7 +20,10 @@ class RequestDetail(BaseSchema):
     code_to_apply_parameters: str | None = None
 
     _client: rnet.Client | None = PrivateAttr(default=None)
-    _namespace: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _code_executor: CodeExecutorT | None = PrivateAttr(default=None)
+
+    def set_code_executor(self, type: CodeExecutorType) -> None:
+        self._code_executor = create_executor(type)
 
     def _get_client(self) -> rnet.Client:
         if self._client is None:
@@ -39,7 +43,7 @@ class RequestDetail(BaseSchema):
     async def make_request(
         self, *, parameters: dict[str, Any] | None = None, timeout: float | None = None
     ) -> rnet.Response:
-        request = self.apply_parameters(**parameters) if parameters else self.request
+        request = await self.apply_parameters(**parameters) if parameters else self.request
         request_kwargs = {}
         if request.queries:
             request_kwargs["query"] = list(request.queries.items())
@@ -62,15 +66,21 @@ class RequestDetail(BaseSchema):
             raise RequestException(response.status, f"Request failed with status code: {response.status}")
         return response
 
-    def apply_parameters(self, **parameters: dict[str, Any]) -> Request:
+    async def apply_parameters(self, **parameters: dict[str, Any]) -> Request:
         try:
-            if self.code_to_apply_parameters and not self._namespace:
-                exec(self.code_to_apply_parameters, self._namespace)  # noqa: S102
+            if self._code_executor is None:
+                self._code_executor = create_executor("unsafe")
 
-            if "apply_parameters" in self._namespace:
-                request = Request.model_validate(
-                    self._namespace["apply_parameters"](self.request.model_dump(), **parameters)
-                )
+            if self.code_to_apply_parameters and (
+                not await self._code_executor.is_definition_available("apply_parameters")
+            ):
+                await self._code_executor.execute(self.code_to_apply_parameters)
+
+            if await self._code_executor.is_definition_available("apply_parameters"):
+                await self._code_executor.execute(f"_request_data = {self.request.model_dump()}")
+                await self._code_executor.execute(f"_parameters = {parameters}")
+                result = await self._code_executor.execute("apply_parameters(_request_data, **_parameters)")
+                request = Request.model_validate(result)
                 request.headers = self.request.headers
                 return request
         except Exception:  # noqa: S110

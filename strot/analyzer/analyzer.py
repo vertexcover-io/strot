@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import io
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from json import dumps as json_dumps
 from typing import Any, cast
 
@@ -15,6 +15,7 @@ from strot import llm
 from strot.analyzer import prompts
 from strot.browser import launch_browser
 from strot.browser.tab import Tab
+from strot.code_executor import CodeExecutorType, create_executor
 from strot.logging import LoggerType, get_logger, setup_logging
 from strot.schema.pattern import Pattern
 from strot.schema.point import Point
@@ -54,6 +55,7 @@ async def analyze(
     browser: Browser | None = None,
     logger: LoggerType | None = None,
     page_load_timeout: float | None = None,
+    code_executor: CodeExecutorType = "unsafe",
 ) -> Source | None:
     """
     Run analysis on the given URL using the given query.
@@ -66,11 +68,12 @@ async def analyze(
         browser: The browser to use.
         logger: The logger to use.
         page_load_timeout: The timeout for waiting for the page to load.
+        code_executor: The type of code executor to use ("unsafe" or "e2b").
     """
     logger = logger or get_logger()
 
     async def run(browser: Browser):
-        analyzer = Analyzer(logger=logger)
+        analyzer = Analyzer(logger=logger, code_executor=code_executor)
         browser_ctx = await browser.new_context(bypass_csp=True)
         tab = Tab(browser_ctx, load_timeout=page_load_timeout)
         try:
@@ -108,8 +111,9 @@ async def analyze(
 
 
 class Analyzer:
-    def __init__(self, logger: LoggerType) -> None:
+    def __init__(self, logger: LoggerType, code_executor: CodeExecutorType = "unsafe") -> None:
         self._logger = logger
+        self._code_executor = create_executor(code_executor)
         self._llm_client = llm.LLMClient(
             provider="anthropic",
             model="claude-sonnet-4-20250514",
@@ -123,7 +127,7 @@ class Analyzer:
         event: str,
         input: llm.LLMInput,
         json: bool,
-        validator: Callable[[str], Any],
+        validator: Callable[[str], Any] | Callable[[str], Awaitable[Any]],
     ) -> Any:
         self._logger.info(
             event,
@@ -145,6 +149,8 @@ class Analyzer:
                 output_tokens=completion.output_tokens,
                 cost=self._llm_client.calculate_cost(completion.input_tokens, completion.output_tokens),
             )
+            if asyncio.iscoroutinefunction(validator):
+                return await validator(completion.value)
             return validator(completion.value)
         except Exception as e:
             self._logger.info(
@@ -372,12 +378,11 @@ class Analyzer:
             )
         )
 
-        def validate(x):
+        async def validate(x):
             result = type_adapter.validate_json(x)
 
-            namespace = {}
-            exec(result.apply_parameters_code, namespace)  # noqa: S102
-            if "apply_parameters" not in namespace:
+            await self._code_executor.execute(result.apply_parameters_code)
+            if not await self._code_executor.is_definition_available("apply_parameters"):
                 raise ValueError("Generated code missing apply_parameters function")
 
             return result
@@ -450,11 +455,12 @@ class Analyzer:
             )
         )
 
-        def validate(value: str) -> tuple[str, int]:
+        async def validate(value: str) -> tuple[str, int]:
             if code := parse_python_code(value):
-                namespace = {}
-                exec(code, namespace)  # noqa: S102
-                data = type_adapter.validate_python(namespace["extract_data"](response_text))
+                await self._code_executor.execute(code)
+                if not await self._code_executor.is_definition_available("extract_data"):
+                    raise ValueError("Generated code missing extract_data function")
+                data = await self._code_executor.execute(f"extract_data({response_text!r})")
                 return code, len(data)
 
             raise ValueError("Code parsing failed")
@@ -545,7 +551,9 @@ class Analyzer:
             if key.lstrip(":").lower() in HEADERS_TO_IGNORE:
                 request_detail.request.headers.pop(key)
 
-        return Source(request_detail=request_detail, response_detail=response_detail)
+        source = Source(request_detail=request_detail, response_detail=response_detail)
+        source.set_code_executor(self._code_executor.type)
+        return source
 
 
 class MutableRange:
