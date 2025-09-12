@@ -85,7 +85,7 @@ class E2BCodeExecutor(BaseCodeExecutor):
             True if the definition exists in sandbox, False otherwise
         """
         try:
-            output = await self.execute(f"'exists' if '{name}' in locals() or '{name}' in globals() else 'not_exists'")
+            output = await self.execute(f"'exists' if {name!r} in locals() or {name!r} in globals() else 'not_exists'")
 
             return output.strip() == "exists"
 
