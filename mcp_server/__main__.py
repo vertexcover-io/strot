@@ -75,7 +75,7 @@ def configure_and_run_mcp_server(transport: Transport, **kwargs: Any):
         browser: Any
 
     @asynccontextmanager
-    async def app_lifespan(server: FastMCP):
+    async def app_lifespan(_: FastMCP):
         async with launch_browser(
             settings.BROWSER_MODE_OR_WS_URL,
         ) as browser:
@@ -86,6 +86,9 @@ def configure_and_run_mcp_server(transport: Transport, **kwargs: Any):
 
     try:
         mcp.run(transport=transport, **kwargs)
+    except KeyboardInterrupt:
+        app.console.print("[yellow]Aborted by user[/]")
+        sys.exit(130)
     except Exception:
         app.console.print_exception()
         sys.exit(1)
@@ -107,7 +110,7 @@ def run_stdio_server():
 @app.command(name="http", help_flags=("-h", "--help"))
 def run_http_server(
     *,
-    host: Annotated[str, Parameter(name=("-h", "--host"))] = "127.0.0.1",
+    host: Annotated[str, Parameter(name=("-H", "--host"))] = "127.0.0.1",
     port: Annotated[int, Parameter(name=("-p", "--port"))] = 8000,
 ):
     """
@@ -123,7 +126,7 @@ def run_http_server(
 @app.command(name="sse", help_flags=("-h", "--help"))
 def run_sse_server(
     *,
-    host: Annotated[str, Parameter(name=("-h", "--host"))] = "127.0.0.1",
+    host: Annotated[str, Parameter(name=("-H", "--host"))] = "127.0.0.1",
     port: Annotated[int, Parameter(name=("-p", "--port"))] = 8000,
 ):
     """
@@ -139,7 +142,7 @@ def run_sse_server(
 @app.command(name="streamable-http", help_flags=("-h", "--help"))
 def run_streamable_http_server(
     *,
-    host: Annotated[str, Parameter(name=("-h", "--host"))] = "127.0.0.1",
+    host: Annotated[str, Parameter(name=("-H", "--host"))] = "127.0.0.1",
     port: Annotated[int, Parameter(name=("-p", "--port"))] = 8000,
 ):
     """
