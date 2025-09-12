@@ -4,7 +4,7 @@ import sys
 from contextlib import suppress
 from typing import Any, Literal, Self
 
-from e2b_code_interpreter import Sandbox
+from e2b_code_interpreter import AsyncSandbox, Sandbox
 from pydantic import PrivateAttr, model_validator
 
 from strot.code_executor.base import BaseCodeExecutor, CodeExecutionError
@@ -16,7 +16,7 @@ class E2BCodeExecutor(BaseCodeExecutor):
     """Code executor that uses E2B Code Interpreter for safe sandboxed execution."""
 
     type: Literal["e2b"] = "e2b"
-    _sandbox: Sandbox | None = PrivateAttr(default=None)
+    _sandbox: AsyncSandbox | None = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def validate_api_key(self) -> Self:
@@ -25,10 +25,10 @@ class E2BCodeExecutor(BaseCodeExecutor):
             raise ValueError("E2B API key is required. Set E2B_API_KEY environment variable.")
         return self
 
-    async def _get_sandbox(self) -> Sandbox:
+    async def _get_sandbox(self) -> AsyncSandbox:
         """Get or create E2B sandbox instance."""
         if self._sandbox is None:
-            self._sandbox = Sandbox.create()
+            self._sandbox = await AsyncSandbox.create()
         return self._sandbox
 
     async def execute(self, code: str) -> Any:
@@ -47,7 +47,7 @@ class E2BCodeExecutor(BaseCodeExecutor):
             sandbox = await self._get_sandbox()
 
             # Execute the code in E2B sandbox
-            execution = sandbox.run_code(code)
+            execution = await sandbox.run_code(code)
 
             if execution.error:
                 raise CodeExecutionError(  # noqa: TRY301
@@ -95,11 +95,11 @@ class E2BCodeExecutor(BaseCodeExecutor):
     async def close(self):
         """Clean up E2B sandbox resources."""
         if self._sandbox:
-            self._sandbox.kill()
+            await self._sandbox.kill()
             self._sandbox = None
 
     def __del__(self):
         """Cleanup when executor is destroyed."""
         if self._sandbox:
             with suppress(Exception):
-                self._sandbox.kill()
+                Sandbox.kill(self._sandbox.sandbox_id)
