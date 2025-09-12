@@ -1,36 +1,14 @@
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
+import sys
 from typing import Annotated, Any
 
 from cyclopts import App, Parameter
-from fastmcp import Context, FastMCP
+from fastmcp import Context
 from fastmcp.server.server import Transport
-from json_schema_to_pydantic import create_model
+from rich.console import Console
 
-import strot
-
-
-@dataclass
-class AppContext:
-    browser: Any
+app = App(name="strotmcp", console=Console(), help_flags=[], version_flags=[])
 
 
-@asynccontextmanager
-async def app_lifespan(server: FastMCP):
-    from .settings import settings
-
-    async with strot.launch_browser(
-        settings.BROWSER_MODE_OR_WS_URL,
-    ) as browser:
-        yield AppContext(browser=browser)
-
-
-mcp = FastMCP("strotmcp", lifespan=app_lifespan)
-
-app = App(name="strotmcp", version_flags=[])
-
-
-@mcp.tool()
 async def analyze_and_find_source(ctx: Context, url: str, query: str, output_schema: dict[str, Any]) -> str:
     """
     Analyze a web page to discover source of the expected data.
@@ -47,7 +25,11 @@ async def analyze_and_find_source(ctx: Context, url: str, query: str, output_sch
         Source object containing all the information from replaying/making paginated requests to code for extracting structured data from the responses.
     """
     try:
-        source = await strot.analyze(
+        from json_schema_to_pydantic import create_model
+
+        from strot import analyze
+
+        source = await analyze(
             url=url,
             query=query,
             output_schema=create_model(output_schema),
@@ -66,9 +48,108 @@ async def analyze_and_find_source(ctx: Context, url: str, query: str, output_sch
         return source.model_dump_json(indent=2, exclude_none=True)
 
 
+def configure_and_run_mcp_server(transport: Transport, **kwargs: Any):
+    from contextlib import asynccontextmanager
+    from dataclasses import dataclass
+
+    from fastmcp import FastMCP
+
+    from strot import launch_browser
+
+    from .exceptions import MissingEnvironmentVariablesError
+
+    try:
+        from .settings import settings
+    except MissingEnvironmentVariablesError as e:
+        from rich.panel import Panel
+        from rich.text import Text
+
+        title = Text("Missing Environment Variables", style="bold red")
+        content = "\n".join([f"• {key}" for key in e.missing_keys])
+
+        app.console.print(Panel(content, title=title, border_style="red", padding=(1, 2)))
+        sys.exit(1)
+
+    @dataclass
+    class AppContext:
+        browser: Any
+
+    @asynccontextmanager
+    async def app_lifespan(server: FastMCP):
+        async with launch_browser(
+            settings.BROWSER_MODE_OR_WS_URL,
+        ) as browser:
+            yield AppContext(browser=browser)
+
+    mcp = FastMCP("strotmcp", lifespan=app_lifespan)
+    mcp.tool(analyze_and_find_source)
+
+    try:
+        mcp.run(transport=transport, **kwargs)
+    except Exception:
+        app.console.print_exception()
+        sys.exit(1)
+
+
 @app.default
-def run(*, transport: Annotated[Transport, Parameter(name=("-t", "--transport"))] = "stdio"):
-    mcp.run(transport=transport)
+def show_help():
+    app.help_print()
+
+
+@app.command(name="stdio", help_flags=("-h", "--help"))
+def run_stdio_server():
+    """
+    Start a stdio server.
+    """
+    configure_and_run_mcp_server("stdio")
+
+
+@app.command(name="http", help_flags=("-h", "--help"))
+def run_http_server(
+    *,
+    host: Annotated[str, Parameter(name=("-h", "--host"))] = "127.0.0.1",
+    port: Annotated[int, Parameter(name=("-p", "--port"))] = 8000,
+):
+    """
+    Start an http server.
+
+    Args:
+        host: The host to bind the server to.
+        port: The port to bind the server to.
+    """
+    configure_and_run_mcp_server("http", host=host, port=port)
+
+
+@app.command(name="sse", help_flags=("-h", "--help"))
+def run_sse_server(
+    *,
+    host: Annotated[str, Parameter(name=("-h", "--host"))] = "127.0.0.1",
+    port: Annotated[int, Parameter(name=("-p", "--port"))] = 8000,
+):
+    """
+    Start an sse server.
+
+    Args:
+        host: The host to bind the server to.
+        port: The port to bind the server to.
+    """
+    configure_and_run_mcp_server("sse", host=host, port=port)
+
+
+@app.command(name="streamable-http", help_flags=("-h", "--help"))
+def run_streamable_http_server(
+    *,
+    host: Annotated[str, Parameter(name=("-h", "--host"))] = "127.0.0.1",
+    port: Annotated[int, Parameter(name=("-p", "--port"))] = 8000,
+):
+    """
+    Start a streamable http server.
+
+    Args:
+        host: The host to bind the server to.
+        port: The port to bind the server to.
+    """
+    configure_and_run_mcp_server("streamable-http", host=host, port=port)
 
 
 if __name__ == "__main__":
