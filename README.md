@@ -170,15 +170,15 @@ export STROT_BROWSER_MODE_OR_WS_URL=wss://...
 ### Usage
 
 ```
-$ uv run strotmcp --help
-Usage: strotmcp [OPTIONS]
+$ uv run strotmcp
+Usage: strotmcp COMMAND
 
-╭─ Commands ──────────────────────────────────────────────────────────────────────╮
-│ --help -h  Display this message and exit.                                       │
-╰─────────────────────────────────────────────────────────────────────────────────╯
-╭─ Parameters ────────────────────────────────────────────────────────────────────╮
-│ --transport  -t  [choices: stdio, http, sse, streamable-http] [default: stdio]  │
-╰─────────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ─────────────────────────────────────────────╮
+│ http             Start an http server.                 │
+│ sse              Start an sse server.                  │
+│ stdio            Start a stdio server.                 │
+│ streamable-http  Start a streamable http server.       │
+╰────────────────────────────────────────────────────────╯
 ```
 
 #### With Claude Code
@@ -186,7 +186,7 @@ Usage: strotmcp [OPTIONS]
 - `stdio` transport
 
   ```bash
-  claude mcp add strot-mcp "uv run strotmcp" --transport stdio \
+  claude mcp add strot-mcp "uv run strotmcp stdio" --transport stdio \
     --env STROT_ANTHROPIC_API_KEY=$STROT_ANTHROPIC_API_KEY STROT_BROWSER_MODE_OR_WS_URL=$STROT_BROWSER_MODE_OR_WS_URL
   ```
 
@@ -195,13 +195,15 @@ Usage: strotmcp [OPTIONS]
   Run the MCP server with the desired transport in separate terminal:
 
   ```bash
-  uv run strotmcp -t sse
+  uv run strotmcp sse --port 8888
+  # uv run strotmcp http --host 0.0.0.0
+  # uv run strotmcp streamable-http --host 127.0.0.1 --port 8777
   ```
 
   Add the MCP server to Claude:
 
   ```bash
-  claude mcp add strot-mcp http://127.0.0.1:8000/sse --transport sse
+  claude mcp add strot-mcp http://127.0.0.1:8888/sse --transport sse
   ```
 
 ## 🧪 Evaluation
