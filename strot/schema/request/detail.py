@@ -66,7 +66,7 @@ class RequestDetail(BaseSchema):
             raise RequestException(response.status, f"Request failed with status code: {response.status}")
         return response
 
-    async def apply_parameters(self, **parameters: dict[str, Any]) -> Request:
+    async def apply_parameters(self, **parameters: Any) -> Request:
         try:
             if self._code_executor is None:
                 self._code_executor = create_executor("unsafe")
