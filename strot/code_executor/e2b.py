@@ -2,7 +2,7 @@ import ast
 import os
 import sys
 from contextlib import suppress
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from e2b_code_interpreter import Sandbox
 from pydantic import PrivateAttr, model_validator
@@ -19,7 +19,7 @@ class E2BCodeExecutor(BaseCodeExecutor):
     _sandbox: Sandbox | None = PrivateAttr(default=None)
 
     @model_validator(mode="after")
-    def validate_api_key(self):
+    def validate_api_key(self) -> Self:
         """Validate that E2B_API_KEY is available in environment."""
         if not os.getenv("E2B_API_KEY"):
             raise ValueError("E2B API key is required. Set E2B_API_KEY environment variable.")
