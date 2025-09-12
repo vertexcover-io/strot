@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import io
 import os
 from collections.abc import Awaitable, Callable
@@ -149,9 +150,8 @@ class Analyzer:
                 output_tokens=completion.output_tokens,
                 cost=self._llm_client.calculate_cost(completion.input_tokens, completion.output_tokens),
             )
-            if asyncio.iscoroutinefunction(validator):
-                return await validator(completion.value)
-            return validator(completion.value)
+            result = validator(completion.value)
+            return await result if inspect.isawaitable(result) else result
         except Exception as e:
             self._logger.info(
                 event,
