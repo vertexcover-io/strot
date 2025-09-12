@@ -381,6 +381,9 @@ class Analyzer:
         async def validate(x):
             result = type_adapter.validate_json(x)
 
+            with contextlib.suppress(ValueError):
+                result.apply_parameters_code = parse_python_code(result.apply_parameters_code)
+
             await self._code_executor.execute(result.apply_parameters_code)
             if not await self._code_executor.is_definition_available("apply_parameters"):
                 raise ValueError("Generated code missing apply_parameters function")
