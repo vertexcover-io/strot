@@ -87,7 +87,8 @@ async def get_reviews():
     source = await strot.analyze(
         url="https://www.getcleanpeople.com/product/fresh-clean-laundry-detergent/",
         query="Customer reviews with ratings and comments",
-        output_schema=Review
+        output_schema=Review,
+        code_executor="e2b" # Defaults to "unsafe"
     )
 
     # Use the same API call the website uses, with full parameter control
@@ -120,6 +121,9 @@ async def get_products():
         query="Listed products with names and prices.",
         output_schema=Product
     )
+
+    # Set code executor of your choice into source
+    source.set_code_executor("e2b")
 
     # Access all products with custom filtering and sorting
     async for products in source.generate_data(limit=100, offset=0, category="vegetables", sortBy="price"):
