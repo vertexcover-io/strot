@@ -67,6 +67,24 @@ class Tab:
             self._plugin = None
             self._responses.clear()
 
+    @staticmethod
+    def _page_to_request(page: Page, headers: dict[str, str] | None = None) -> Request:
+        parsed_url = urlparse(page.url)
+        return Request(
+            method="GET",
+            url=f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}",
+            type="ssr",
+            queries=dict(parse_qsl(parsed_url.query)),
+            headers=headers or {},
+            post_data=None,
+        )
+
+    async def page_response(self) -> Response:
+        return Response(
+            value=await self._page.content(),
+            request=self._page_to_request(self._page, self._page_headers),
+        )
+
     async def _handle_ajax_response(self, response: InterceptedResponse) -> None:
         rsc_type = response.request.resource_type
         if rsc_type not in ("xhr", "fetch"):
@@ -96,20 +114,6 @@ class Tab:
             )
 
     async def _handle_server_side_rendering(self, page: Page) -> None:
-        parsed_url = urlparse(page.url)
-        if parsed_url.scheme.lower() not in ("http", "https"):
-            return
-
-        self._responses.append(
-            Response(
-                value=await page.content(),
-                request=Request(
-                    method="GET",
-                    url=f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}",
-                    type="ssr",
-                    queries=dict(parse_qsl(parsed_url.query)),
-                    headers=self._page_headers or {},
-                    post_data=None,
-                ),
-            )
-        )
+        page_request = self._page_to_request(page, self._page_headers)
+        if page_request != self._page_to_request(self._page, self._page_headers):
+            self._responses.append(Response(value=await page.content(), request=page_request))
