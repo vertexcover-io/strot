@@ -382,6 +382,121 @@ function getLastVisibleChild(parentContainer) {
   return null;
 }
 
+/**
+ * Compares two DOM elements for structural similarity using a threshold-based approach.
+ * Recursively checks tag names and child counts to calculate a similarity score.
+ *
+ * @param {HTMLElement} element1 - The first element to compare
+ * @param {HTMLElement} element2 - The second element to compare
+ * @param {number} threshold - Similarity threshold (0-1). Default is 0.95 (95%)
+ * @returns {boolean} True if elements are structurally similar above the threshold
+ *
+ * @example
+ * // Check if two elements are 95% similar (default)
+ * const isSimilar = areStructurallyEqual(div1, div2);
+ *
+ * // Check with custom 90% threshold
+ * const isSimilar = areStructurallyEqual(div1, div2, 0.90);
+ */
+function areStructurallyEqual(element1, element2, threshold = 0.95) {
+  let totalChecks = 0;
+  let passedChecks = 0;
+
+  function compareRecursive(el1, el2) {
+    totalChecks++;
+    if (el1.tagName === el2.tagName) {
+      passedChecks++;
+    }
+
+    totalChecks++;
+    if (el1.children.length === el2.children.length) {
+      passedChecks++;
+    }
+
+    // Compare children up to the minimum count
+    const minChildren = Math.min(el1.children.length, el2.children.length);
+    for (let i = 0; i < minChildren; i++) {
+      compareRecursive(el1.children[i], el2.children[i]);
+    }
+  }
+
+  compareRecursive(element1, element2);
+  const similarity = passedChecks / totalChecks;
+
+  return similarity >= threshold;
+}
+
+/**
+ * Checks if an element has similar children or sibling based on structural comparison.
+ * Returns true if:
+ * 1. At least 80% of the element's children are similar to each other, OR
+ * 2. At least 80% of siblings are similar to the given element
+ *
+ * @param {HTMLElement} element - The element to analyze
+ * @param {number} threshold - Similarity threshold (0-1). Default is 0.95 (95%)
+ * @returns {boolean} True if similar children or siblings are found
+ *
+ * @example
+ * // Check if element has similar children or sibling (95% threshold)
+ * const hasSimilar = hasSimilarChildrenOrSibling(element);
+ *
+ * // Check with custom 90% threshold
+ * const hasSimilar = hasSimilarChildrenOrSibling(element, 0.90);
+ *
+ * // Use case: detecting repeating patterns in DOM structure
+ * if (hasSimilarChildrenOrSibling(listElement)) {
+ *   console.log('Found repeating patterns - likely a list or grid');
+ * }
+ */
+function hasSimilarChildrenOrSibling(element, threshold = 0.95) {
+  if (!element.children.length || !element.parentElement) {
+    return false;
+  }
+
+  // Check if at least 80% of children are similar to each other
+  const children = Array.from(element.children);
+  if (children.length > 1) {
+    const totalPairs = (children.length * (children.length - 1)) / 2;
+    let similarPairs = 0;
+
+    for (let i = 0; i < children.length; i++) {
+      for (let j = i + 1; j < children.length; j++) {
+        if (areStructurallyEqual(children[i], children[j], threshold)) {
+          similarPairs++;
+        }
+      }
+    }
+
+    const similarityPercentage = similarPairs / totalPairs;
+    if (similarityPercentage >= 0.8) {
+      return true;
+    }
+  }
+
+  // Check if at least 80% of siblings are similar to the given element
+  if (element.parentElement) {
+    const siblings = Array.from(element.parentElement.children).filter(
+      (sibling) => sibling !== element,
+    );
+    if (siblings.length > 0) {
+      let similarSiblings = 0;
+
+      for (let sibling of siblings) {
+        if (areStructurallyEqual(element, sibling, threshold)) {
+          similarSiblings++;
+        }
+      }
+
+      const siblingsSimilarityPercentage = similarSiblings / siblings.length;
+      if (siblingsSimilarityPercentage >= 0.8) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 // Expose to window
 window.scrollToNextView = scrollToNextView;
 window.getElementsInDOM = getElementsInDOM;
@@ -391,4 +506,6 @@ window.isElementCompletelyOutsideViewport = isElementCompletelyOutsideViewport;
 window.canScrollIntoView = canScrollIntoView;
 window.findCommonParent = findCommonParent;
 window.getLastVisibleChild = getLastVisibleChild;
+window.areStructurallyEqual = areStructurallyEqual;
+window.hasSimilarChildrenOrSibling = hasSimilarChildrenOrSibling;
 window.strotPluginInjected = true;

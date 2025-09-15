@@ -69,6 +69,21 @@ class Plugin:
             [parent_container_selector],
         )
 
+    async def has_similar_children_or_sibling(self, selector: str, threshold: float = 0.95) -> bool:
+        return await self.evaluate(
+            """
+            ([selector, threshold]) => {
+                const container = document.querySelector(selector);
+                if (!container) {
+                    return false;
+                }
+
+                return window.hasSimilarChildrenOrSibling(container, threshold);
+            }
+            """,
+            [selector, threshold],
+        )
+
     async def scroll_to_element(self, selector: str) -> None:
         await self._page.locator(selector).scroll_into_view_if_needed()
 
