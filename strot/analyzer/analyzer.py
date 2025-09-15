@@ -112,7 +112,7 @@ async def analyze(
 
 
 class Analyzer:
-    def __init__(self, logger: LoggerType, code_executor: CodeExecutorType = "unsafe") -> None:
+    def __init__(self, logger: LoggerType, code_executor: CodeExecutorType) -> None:
         self._logger = logger
         self._code_executor = create_executor(code_executor)
         self._llm_client = llm.LLMClient(
@@ -122,6 +122,8 @@ class Analyzer:
             cost_per_1m_input=3.0,
             cost_per_1m_output=15.0,
         )
+        self._first_pass = True
+        self._is_requirement_paginated_data = False
 
     async def request_llm_completion(
         self,
@@ -194,6 +196,14 @@ class Analyzer:
         if sections := result.text_sections:
             response_to_return = None
             container = await tab.plugin.get_parent_container(sections)
+
+            if self._first_pass:
+                if container and (await tab.plugin.has_similar_children_or_sibling(container)):
+                    self._is_requirement_paginated_data = True
+                else:
+                    response_to_return = await tab.page_response()
+                    response_to_return.preprocessor = HTMLResponsePreprocessor(element_selector=container)
+
             for idx, response in enumerate(list(tab.responses)):
                 score = text_match_ratio(sections, response.value)
                 if score < 0.5:
@@ -207,7 +217,11 @@ class Analyzer:
                 break
 
             skip = False
-            if container and (last_child := await tab.plugin.get_last_visible_child(container)):
+            if (
+                not self._first_pass
+                and container
+                and (last_child := await tab.plugin.get_last_visible_child(container))
+            ):
                 self._logger.info(
                     "run-step",
                     context=encode_image(screenshot),
@@ -228,6 +242,7 @@ class Analyzer:
                 )
                 await tab.plugin.click_at_point(point)
 
+            self._first_pass = False
             if skip or response_to_return:
                 # If either similar element skip was performed or response was found, end the step
                 return response_to_return
@@ -529,7 +544,7 @@ class Analyzer:
 
             self._logger.info("analysis", action="parameter-detection", status="pending")
             request_detail = await self.build_request_detail(response.request, *(tab.responses + captured_responses))
-            if request_detail.pagination_info is None:
+            if self._is_requirement_paginated_data and request_detail.pagination_info is None:
                 self._logger.info(
                     "analysis", action="parameter-detection", status="failed", reason="No pagination detected."
                 )
