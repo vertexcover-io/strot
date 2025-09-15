@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import ValidationError, WebsocketUrl, field_validator
 from pydantic_settings import BaseSettings
 
-from .exceptions import MissingEnvironmentVariablesError
+from mcp_server.exceptions import MissingEnvironmentVariablesError
 
 
 class Settings(BaseSettings):

@@ -54,12 +54,11 @@ def configure_and_run_mcp_server(transport: Transport, **kwargs: Any):
 
     from fastmcp import FastMCP
 
+    from mcp_server.exceptions import MissingEnvironmentVariablesError
     from strot import launch_browser
 
-    from .exceptions import MissingEnvironmentVariablesError
-
     try:
-        from .settings import settings
+        from mcp_server.settings import settings
     except MissingEnvironmentVariablesError as e:
         from rich.panel import Panel
         from rich.text import Text
