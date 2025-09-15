@@ -1,7 +1,6 @@
-import os
 from typing import Literal
 
-from pydantic import ValidationError, WebsocketUrl, field_validator
+from pydantic import SecretStr, ValidationError, WebsocketUrl
 from pydantic_settings import BaseSettings
 
 from mcp_server.exceptions import MissingEnvironmentVariablesError
@@ -13,13 +12,7 @@ class Settings(BaseSettings):
     BROWSER_MODE_OR_WS_URL: Literal["headed", "headless"] | WebsocketUrl = "headed"
     """Either 'headed' | 'headless' or a ws://|wss:// WebSocket URL"""
 
-    ANTHROPIC_API_KEY: str
-
-    @field_validator("ANTHROPIC_API_KEY", mode="after")
-    @classmethod
-    def set_anthropic_api_key(cls, value: str):
-        os.environ["STROT_ANTHROPIC_API_KEY"] = value
-        return value
+    ANTHROPIC_API_KEY: SecretStr
 
     def __init__(self, **kwargs):
         try:
