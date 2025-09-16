@@ -197,8 +197,8 @@ class Analyzer:
             response_to_return = None
             container = await tab.plugin.get_parent_container(sections)
 
-            if self._first_pass:
-                if container and (await tab.plugin.has_similar_children_or_sibling(container)):
+            if self._first_pass and container:
+                if await tab.plugin.has_similar_children_or_sibling(container):
                     self._is_requirement_paginated_data = True
                 else:
                     response_to_return = await tab.page_response()
