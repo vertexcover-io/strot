@@ -48,40 +48,53 @@ class Plugin:
         removed = before_selectors - after_selectors
         return len(added) > 0 or len(removed) > 0
 
+    async def click_element(self, selector: str) -> bool:
+        before_selectors = await self.get_selectors_in_view()
+        try:
+            await self._page.locator(selector).click(timeout=5000)
+        except Exception:
+            return False
+        await self._page.wait_for_timeout(2000)
+        after_selectors = await self.get_selectors_in_view()
+
+        added = after_selectors - before_selectors
+        removed = before_selectors - after_selectors
+        return len(added) > 0 or len(removed) > 0
+
     async def scroll_to_next_view(self, direction: Literal["up", "down"] = "down") -> bool:
         return await self.evaluate("([direction]) => window.scrollToNextView({ direction })", [direction])
 
-    async def get_parent_container(self, text_sections: list[str]) -> str | None:
-        return await self.evaluate("([sections]) => window.findCommonParent(sections)", [text_sections])
-
-    async def get_last_visible_child(self, parent_container_selector: str) -> str | None:
+    async def find_common_parent(self, text_sections: list[str]) -> str | None:
         return await self.evaluate(
             """
-            ([selector]) => {
-                const parentContainer = document.querySelector(selector);
-                if (!parentContainer) {
+            ([sections]) => {
+                const parent = window.findCommonParent(sections);
+                return parent ? window.generateCSSSelector(parent) : null;
+            }
+            """,
+            [text_sections],
+        )
+
+    async def get_last_similar_children_or_sibling(
+        self,
+        selector: str,
+        threshold: float = 0.95,
+        is_outside_viewport: bool = True,
+        is_visible: bool = True,
+    ) -> str | None:
+        return await self.evaluate(
+            """
+            ([selector, threshold, isOutsideViewport, isVisible]) => {
+                const container = document.querySelector(selector);
+                if (!container) {
                     return null;
                 }
 
-                return window.getLastVisibleChild(parentContainer);
+                const element = window.getLastSimilarChildrenOrSibling(container, {threshold, isOutsideViewport, isVisible});
+                return element ? window.generateCSSSelector(element) : null;
             }
             """,
-            [parent_container_selector],
-        )
-
-    async def has_similar_children_or_sibling(self, selector: str, threshold: float = 0.95) -> bool:
-        return await self.evaluate(
-            """
-            ([selector, threshold]) => {
-                const container = document.querySelector(selector);
-                if (!container) {
-                    return false;
-                }
-
-                return window.hasSimilarChildrenOrSibling(container, threshold);
-            }
-            """,
-            [selector, threshold],
+            [selector, threshold, is_outside_viewport, is_visible],
         )
 
     async def scroll_to_element(self, selector: str) -> None:
