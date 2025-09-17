@@ -112,7 +112,7 @@ async def analyze(
 
 
 class Analyzer:
-    def __init__(self, logger: LoggerType, code_executor: CodeExecutorType) -> None:
+    def __init__(self, logger: LoggerType, code_executor: CodeExecutorType = "unsafe") -> None:
         self._logger = logger
         self._code_executor = create_executor(code_executor)
         self._llm_client = llm.LLMClient(
@@ -122,8 +122,7 @@ class Analyzer:
             cost_per_1m_input=3.0,
             cost_per_1m_output=15.0,
         )
-        self._first_pass = True
-        self._is_requirement_paginated_data = False
+        self._is_requirement_listed_data = False
 
     async def request_llm_completion(
         self,
@@ -193,60 +192,6 @@ class Analyzer:
             image.save(buffer, format="PNG")
             return encode_image(buffer.getvalue())
 
-        if sections := result.text_sections:
-            response_to_return = None
-            container = await tab.plugin.get_parent_container(sections)
-
-            if self._first_pass and container:
-                if await tab.plugin.has_similar_children_or_sibling(container):
-                    self._is_requirement_paginated_data = True
-                else:
-                    response_to_return = await tab.page_response()
-                    response_to_return.preprocessor = HTMLResponsePreprocessor(element_selector=container)
-
-            for idx, response in enumerate(list(tab.responses)):
-                score = text_match_ratio(sections, response.value)
-                if score < 0.5:
-                    continue
-
-                if response.request.type == "ssr" and container:
-                    response.preprocessor = HTMLResponsePreprocessor(element_selector=container)
-
-                response_to_return = response
-                tab.responses.pop(idx)
-                break
-
-            skip = False
-            if (
-                not self._first_pass
-                and container
-                and (last_child := await tab.plugin.get_last_visible_child(container))
-            ):
-                self._logger.info(
-                    "run-step",
-                    context=encode_image(screenshot),
-                    step="skip-similar-content",
-                    action="scroll",
-                    target=last_child,
-                )
-                await tab.plugin.scroll_to_element(last_child)
-                skip = True
-
-            if point := result.close_overlay_popup_coords:
-                self._logger.info(
-                    "run-step",
-                    context=get_context(point),
-                    step="close-overlay-popup",
-                    action="click",
-                    point=point.model_dump(),
-                )
-                await tab.plugin.click_at_point(point)
-
-            self._first_pass = False
-            if skip or response_to_return:
-                # If either similar element skip was performed or response was found, end the step
-                return response_to_return
-
         if point := result.close_overlay_popup_coords:
             self._logger.info(
                 "run-step",
@@ -255,9 +200,46 @@ class Analyzer:
                 action="click",
                 point=point.model_dump(),
             )
-            if await tab.plugin.click_at_point(point):
+            status = await tab.plugin.click_at_point(point)
+            if status and not result.text_sections:
                 return
 
+        if sections := result.text_sections:
+            response_to_return = None
+            if parent := await tab.plugin.find_common_parent(sections):
+                if len(sections) == 1:  # TODO: handle hallucinated outputs from LLM
+                    await tab.plugin.click_element(parent)
+                    return
+
+                for idx, response in enumerate(list(tab.responses)):
+                    if text_match_ratio(sections, response.value) < 0.5:
+                        continue
+
+                    response_to_return = response
+                    tab.responses.pop(idx)
+                    break
+
+                self._is_requirement_listed_data = False
+                if last_similar_element := await tab.plugin.get_last_similar_children_or_sibling(parent):
+                    self._logger.info(
+                        "run-step",
+                        context=encode_image(screenshot),
+                        step="skip-similar-content",
+                        action="scroll",
+                        target=last_similar_element,
+                    )
+                    await tab.plugin.scroll_to_element(last_similar_element)
+                    self._is_requirement_listed_data = True
+                elif not result.load_more_content_coords and not response_to_return:
+                    response_to_return = await tab.page_response()
+
+                if response_to_return:
+                    if response_to_return.request.type == "ssr":
+                        response_to_return.preprocessor = HTMLResponsePreprocessor(element_selector=parent)
+
+                    return response_to_return
+
+        click_failed = False
         if point := result.load_more_content_coords:
             self._logger.info(
                 "run-step",
@@ -268,6 +250,7 @@ class Analyzer:
             )
             if await tab.plugin.click_at_point(point):
                 return
+            click_failed = True
 
         if point := result.skip_to_content_coords:
             self._logger.info(
@@ -275,11 +258,13 @@ class Analyzer:
             )
             if await tab.plugin.click_at_point(point):
                 return
+            click_failed = True
 
-        self._logger.info(
-            "run-step", context=encode_image(screenshot), step="fallback", action="scroll", target="next-view"
-        )
-        await tab.plugin.scroll_to_next_view()
+        if not self._is_requirement_listed_data or click_failed:
+            self._logger.info(
+                "run-step", context=encode_image(screenshot), step="fallback", action="scroll", target="next-view"
+            )
+            await tab.plugin.scroll_to_next_view()
 
     async def discover_relevant_response(self, tab: Tab, query: str, max_steps: int | MutableRange) -> Response | None:
         for step in range(0, max_steps) if isinstance(max_steps, int) else max_steps:
@@ -544,7 +529,7 @@ class Analyzer:
 
             self._logger.info("analysis", action="parameter-detection", status="pending")
             request_detail = await self.build_request_detail(response.request, *(tab.responses + captured_responses))
-            if self._is_requirement_paginated_data and request_detail.pagination_info is None:
+            if self._is_requirement_listed_data and request_detail.pagination_info is None:
                 self._logger.info(
                     "analysis", action="parameter-detection", status="failed", reason="No pagination detected."
                 )
