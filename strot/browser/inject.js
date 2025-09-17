@@ -516,10 +516,6 @@ function getLastSimilarChildrenOrSibling(
   element,
   { threshold = 0.95, isOutsideViewport = false, isVisible = false } = {},
 ) {
-  if (!element.children.length || !element.parentElement) {
-    return null;
-  }
-
   // Local function to process elements based on options
   function processElements(elements) {
     if (isOutsideViewport || isVisible) {
