@@ -110,8 +110,6 @@ class LimitOffsetTranslator(BasePaginationTranslator):
 
             if slice_data := self.slice(data):
                 yield slice_data
-            else:
-                break
 
     async def _generate_page_limit_data(  # noqa: C901
         self,
@@ -144,7 +142,6 @@ class LimitOffsetTranslator(BasePaginationTranslator):
         last_response_text = None
         used_fallback = False  # Track if we've already used the default limit fallback
 
-        self.global_position = self.offset
         pg_info = request_detail.pagination_info
         while self.remaining_items > 0:
             # Prepare request state
@@ -180,8 +177,6 @@ class LimitOffsetTranslator(BasePaginationTranslator):
             # Use tracker.slice to handle offset/limit logic
             if slice_data := self.slice(data):
                 yield slice_data
-            else:
-                break
 
             current_page += 1
 
@@ -213,7 +208,7 @@ class LimitOffsetTranslator(BasePaginationTranslator):
         last_response_text = None
 
         # Set initial global position for tracker based on the starting page
-        self.global_position = (start_page - start_page) * estimated_page_size
+        self.global_position = start_page * estimated_page_size
 
         pg_info = request_detail.pagination_info
         while self.remaining_items > 0 and current_page <= end_page:
@@ -239,8 +234,6 @@ class LimitOffsetTranslator(BasePaginationTranslator):
             # Use tracker.slice to handle offset/limit logic
             if slice_data := self.slice(data):
                 yield slice_data
-            else:
-                break
 
             # For subsequent pages, no offset within page
             if current_page > start_page:
