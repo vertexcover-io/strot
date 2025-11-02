@@ -17,7 +17,16 @@ WHAT TO IGNORE:
 
 ACTIONS TO CHOOSE FROM (ORDERED BY PRIORITY):
 1. If human intervention is needed (login walls, CAPTCHA, 2FA, authentication, blocked access):
-   → Set "human_intervention_reason" to a clear description of what needs to be done (e.g., "Login required to access product listings", "CAPTCHA verification needed", "2FA code entry required")
+   → Set "human_intervention_reason" to a BRIEF, GENERAL description of the BLOCKER TYPE ONLY
+   → DO NOT include specific details about what content is being blocked
+   → Focus on the CORE BLOCKER, not the destination
+   → Examples:
+     ✓ GOOD: "Login required"
+     ✗ BAD: "Login required to access customer reviews with ratings and comments"
+     ✓ GOOD: "CAPTCHA verification needed"
+     ✗ BAD: "CAPTCHA challenge needed to proceed to checkout page"
+     ✓ GOOD: "2FA code entry required"
+     ✗ BAD: "2FA authentication needed to view order history and tracking"
    → Leave all coordinate fields null
    → This takes HIGHEST PRIORITY - if intervention is needed, set this and return immediately
 
