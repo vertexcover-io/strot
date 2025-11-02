@@ -1,7 +1,7 @@
 import contextlib
 from urllib.parse import parse_qsl, urlparse
 
-from patchright.async_api import BrowserContext, Page
+from patchright.async_api import BrowserContext, Page, ViewportSize
 from patchright.async_api import Response as InterceptedResponse
 
 from strot.browser.plugin import Plugin
@@ -15,7 +15,7 @@ class Tab:
     def __init__(
         self,
         browser_context: BrowserContext,
-        viewport_size: dict[str, int] | None = None,
+        viewport_size: ViewportSize | None = None,
         load_timeout: float | None = None,
     ) -> None:
         self._browser_context = browser_context
@@ -57,6 +57,20 @@ class Tab:
         if self._plugin is None:
             raise RuntimeError("No page is loaded; call goto() first")
         return self._plugin
+
+    @property
+    def page(self) -> Page:
+        if self._page is None:
+            raise RuntimeError("No page is loaded; call goto() first")
+        return self._page
+
+    @property
+    def browser_context(self) -> BrowserContext:
+        return self._browser_context
+
+    @property
+    def viewport_size(self) -> ViewportSize:
+        return self._viewport_size
 
     async def reset(self) -> None:
         if self._page:
