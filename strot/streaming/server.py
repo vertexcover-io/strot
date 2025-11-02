@@ -159,10 +159,16 @@ class StreamingServer:
         """Register a new Tab for streaming"""
         cdp = await tab.browser_context.new_cdp_session(tab.page)
         await cdp.send("Page.enable")
-        await cdp.send("Runtime.enable")
 
         session_state = SessionState(tab=tab, cdp=cdp, reason=reason)
         self.sessions[session_id] = session_state
+
+        # Take initial screenshot and use it as first frame to avoid buffering
+        # This ensures stream has content immediately while waiting for CDP screencast
+        with suppress(Exception):
+            screenshot_bytes = await tab.plugin.take_screenshot(type="jpeg")
+            session_state.latest_frame = screenshot_bytes
+            session_state.frame_queue.put_nowait(screenshot_bytes)
 
         # Start capture immediately so frames are ready when page loads
         session_state.capture_task = asyncio.create_task(self._capture_frames(session_state))
