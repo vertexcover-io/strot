@@ -12,12 +12,14 @@ class StepResult(BaseModel):
         skip_to_content_coords: Coordinates of element or button which might lead to the required content.
         load_more_content_coords: Coordinates of pagination controls (Next, More, page numbers, arrows) that load additional relevant content.
         text_sections: List of exact text strings visible in screenshot that match user requirements (product names, prices, descriptions, etc.).
+        human_intervention_reason: Description of why human intervention is needed (e.g., "Login required", "CAPTCHA needs to be solved", "2FA verification needed"). Set to None if no intervention needed.
     """
 
     close_overlay_popup_coords: Point | None = None
     skip_to_content_coords: Point | None = None
     load_more_content_coords: Point | None = None
     text_sections: list[str] | None = None
+    human_intervention_reason: str | None = None
 
 
 class PaginationKeys(BaseModel):
