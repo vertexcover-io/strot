@@ -486,6 +486,18 @@ function areStructurallyEqual(element1, element2, threshold = 0.95) {
   return similarity >= threshold;
 }
 
+function getDynamicSimilarityThreshold(elementCount) {
+  // Logarithmic decay: starts at 0.9, asymptotes toward 0.3
+  const minThreshold = 0.3;
+  const maxThreshold = 0.9;
+  const decayFactor = 0.15;
+
+  const threshold =
+    minThreshold +
+    (maxThreshold - minThreshold) * Math.exp(-decayFactor * elementCount);
+  return Math.max(minThreshold, Math.min(maxThreshold, threshold));
+}
+
 /**
  * Gets the last similar children or sibling based on structural comparison.
  * Returns the last similar element if:
@@ -537,7 +549,7 @@ function getLastSimilarChildrenOrSibling(
     }
   }
 
-  // Check if at least 80% of children are similar to each other
+  // Check children are similar to each other
   const children = Array.from(element.children);
   if (children.length > 1) {
     const totalPairs = (children.length * (children.length - 1)) / 2;
@@ -551,13 +563,14 @@ function getLastSimilarChildrenOrSibling(
       }
     }
 
+    const dynamicThreshold = getDynamicSimilarityThreshold(children.length);
     const similarityPercentage = similarPairs / totalPairs;
-    if (similarityPercentage >= 0.8) {
+    if (similarityPercentage >= dynamicThreshold) {
       return processElements(children);
     }
   }
 
-  // Check if at least 80% of siblings are similar to the given element
+  // Check siblings are similar to the given element
   if (element.parentElement) {
     const siblings = Array.from(element.parentElement.children).filter(
       (sibling) => sibling !== element,
@@ -571,8 +584,11 @@ function getLastSimilarChildrenOrSibling(
         }
       }
 
+      const dynamicThreshold = getDynamicSimilarityThreshold(
+        siblings.length + 1,
+      );
       const siblingsSimilarityPercentage = similarSiblings / siblings.length;
-      if (siblingsSimilarityPercentage >= 0.8) {
+      if (siblingsSimilarityPercentage >= dynamicThreshold) {
         const allSiblings = Array.from(element.parentElement.children);
         return processElements(allSiblings);
       }
