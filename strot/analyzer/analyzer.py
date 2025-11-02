@@ -24,6 +24,7 @@ from strot.schema.request import Request, RequestDetail, pagination_info
 from strot.schema.response import HTMLResponsePreprocessor, Response
 from strot.schema.response.detail import ResponseDetail
 from strot.schema.source import Source
+from strot.streaming import StreamingConfig, StreamingManager
 from strot.type_adapter import TypeAdapter
 from strot.utils.image import draw_point_on_image, encode_image
 from strot.utils.request import (
@@ -57,6 +58,7 @@ async def analyze(
     logger: LoggerType | None = None,
     page_load_timeout: float | None = None,
     code_executor: CodeExecutorType = "unsafe",
+    streaming_config: StreamingConfig | None = None,
 ) -> Source | None:
     """
     Run analysis on the given URL using the given query.
@@ -70,11 +72,13 @@ async def analyze(
         logger: The logger to use.
         page_load_timeout: The timeout for waiting for the page to load.
         code_executor: The type of code executor to use ("unsafe" or "e2b").
+        streaming_config: Configuration for streaming and human intervention.
     """
     logger = logger or get_logger()
 
     async def run(browser: Browser):
-        analyzer = Analyzer(logger=logger, code_executor=code_executor)
+        streaming_manager = StreamingManager(streaming_config)
+        analyzer = Analyzer(logger=logger, code_executor=code_executor, streaming_manager=streaming_manager)
         browser_ctx = await browser.new_context(bypass_csp=True)
         tab = Tab(browser_ctx, load_timeout=page_load_timeout)
         try:
@@ -103,6 +107,7 @@ async def analyze(
             with contextlib.suppress(Exception):
                 await tab.reset()
                 await browser_ctx.close()
+                await streaming_manager.cleanup()
 
     if browser is None:
         async with launch_browser("headed") as browser_instance:
@@ -112,9 +117,15 @@ async def analyze(
 
 
 class Analyzer:
-    def __init__(self, logger: LoggerType, code_executor: CodeExecutorType = "unsafe") -> None:
+    def __init__(
+        self,
+        logger: LoggerType,
+        code_executor: CodeExecutorType = "unsafe",
+        streaming_manager: StreamingManager | None = None,
+    ) -> None:
         self._logger = logger
         self._code_executor = create_executor(code_executor)
+        self._streaming_manager = streaming_manager
         self._llm_client = llm.LLMClient(
             provider="anthropic",
             model="claude-sonnet-4-20250514",
@@ -191,6 +202,31 @@ class Analyzer:
             buffer = io.BytesIO()
             image.save(buffer, format="PNG")
             return encode_image(buffer.getvalue())
+
+        # Handle human intervention request
+        if self._streaming_manager and result.human_intervention_reason:
+            self._logger.info(
+                "run-step",
+                context=encode_image(screenshot),
+                step="human-intervention-requested",
+                reason=result.human_intervention_reason,
+            )
+
+            success = await self._streaming_manager.request_intervention(
+                tab=tab, reason=result.human_intervention_reason, logger=self._logger
+            )
+
+            if not success:
+                self._logger.info(
+                    "run-step",
+                    step="human-intervention-failed",
+                    reason="Timeout or verification failed",
+                )
+                return None
+
+            self._logger.info("run-step", step="human-intervention-completed", reason=result.human_intervention_reason)
+            # Return None to continue analysis after intervention
+            return None
 
         if point := result.close_overlay_popup_coords:
             self._logger.info(
@@ -529,6 +565,8 @@ class Analyzer:
 
             self._logger.info("analysis", action="parameter-detection", status="pending")
             request_detail = await self.build_request_detail(response.request, *(tab.responses + captured_responses))
+            print("IS REQUIREMENT LISTED DATA", self._is_requirement_listed_data)
+            print(request_detail.pagination_info)
             if self._is_requirement_listed_data and request_detail.pagination_info is None:
                 self._logger.info(
                     "analysis", action="parameter-detection", status="failed", reason="No pagination detected."
