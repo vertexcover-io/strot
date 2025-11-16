@@ -20,8 +20,10 @@ dependencies = [
     "anthropic>=0.50.0",
     "beautifulsoup4>=4.13.4",
     "boto3>=1.39.4",
+    "desktop-notifier>=6.2.0",
     "docstring-parser>=0.17.0",
     "e2b-code-interpreter>=2.0.0",
+    "fastapi>=0.120.1",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
     "json-repair>=0.44.1",
@@ -30,12 +32,14 @@ dependencies = [
     "patchright>=1.52.0,<1.53",
     "pillow>=11.2.1",
     "pydantic>=2.11.3",
+    "pyperclip>=1.11.0",
     "python-magic>=0.4.27",
     "python-multipart>=0.0.20",
     "rapidfuzz>=3.13.0",
     "regex>=2024.11.6",
     "rnet>=2.4.2",
     "structlog>=25.4.0",
+    "uvicorn[standard]>=0.38.0",
 ]
 
 [project.urls]
@@ -94,7 +98,8 @@ packages = ["strot"]
 include = [
   "strot/**/*.py",
   "strot/**/*.js",
-  "strot/**/*.jinja"
+  "strot/**/*.jinja",
+  "strot/**/*.html"
 ]
 
 [tool.mypy]

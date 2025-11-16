@@ -1,0 +1,23 @@
+You are verifying if a human has resolved a blocker that was preventing automated web scraping.
+
+ORIGINAL BLOCKER: {{ reason }}
+
+Look at the screenshot and determine if this blocker has been RESOLVED by the human user.
+
+Respond with ONLY "YES" if:
+- The blocker mentioned above is NO LONGER present
+- The user has successfully completed the required action (login, CAPTCHA, 2FA, etc.)
+- The page now shows content that was previously blocked
+
+Respond with ONLY "NO" if:
+- The blocker is STILL present on the screen
+- The user has NOT yet completed the required action
+- The page still shows the same blocking screen/prompt
+
+Examples:
+- If blocker was "Login required" and screenshot shows logged-in content → YES
+- If blocker was "Login required" and screenshot still shows login form → NO
+- If blocker was "CAPTCHA needed" and screenshot shows normal page → YES
+- If blocker was "CAPTCHA needed" and screenshot still shows CAPTCHA → NO
+
+Be strict - only say YES if you're confident the blocker mentioned above is completely resolved.

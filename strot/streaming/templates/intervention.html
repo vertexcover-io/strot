@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser Control - Human Intervention</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+          background: #0a0a0a;
+          color: #e0e0e0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 20px;
+      }
+
+      #browser-window {
+          width: {{ viewport_width }}px;
+          max-width: calc(100vw - 40px);
+          background: #2a2a2a;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+      }
+
+      #toolbar {
+          height: 50px;
+          background: linear-gradient(to bottom, #3a3a3a, #2e2e2e);
+          border-bottom: 1px solid #1a1a1a;
+          display: flex;
+          align-items: center;
+          padding: 0 16px;
+          gap: 10px;
+          flex-shrink: 0;
+      }
+
+      .browser-icon {
+          font-size: 18px;
+          margin-right: 8px;
+          opacity: 0.7;
+      }
+
+      .nav-buttons {
+          display: flex;
+          gap: 4px;
+      }
+
+      .nav-button {
+          width: 32px;
+          height: 32px;
+          background: #444;
+          border: 1px solid #555;
+          border-radius: 4px;
+          color: #e0e0e0;
+          cursor: pointer;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+      }
+
+      .nav-button:hover:not(:disabled) {
+          background: #555;
+          border-color: #666;
+      }
+
+      .nav-button:active:not(:disabled) {
+          background: #333;
+      }
+
+      .nav-button:disabled {
+          background: #2a2a2a;
+          border-color: #333;
+          color: #666;
+          cursor: not-allowed;
+          opacity: 0.5;
+      }
+
+      #task-info {
+          flex: 1;
+          margin-left: 12px;
+          padding: 6px 12px;
+          background: #1a1a1a;
+          border-radius: 4px;
+          font-size: 13px;
+          color: #bbb;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+      }
+
+      #task-info .label {
+          color: #888;
+          margin-right: 6px;
+      }
+
+      #status {
+          margin-left: 12px;
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+      }
+
+      .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+      }
+
+      .connected { color: #4caf50; }
+      .connected .status-dot { background: #4caf50; }
+      .connecting { color: #ff9800; }
+      .connecting .status-dot { background: #ff9800; }
+      .completed { color: #4caf50; }
+      .completed .status-dot { background: #4caf50; }
+
+      #stream-container {
+          width: {{ viewport_width }}px;
+          height: {{ viewport_height }}px;
+          max-width: 100%;
+          max-height: calc(100vh - 120px);
+          background: #000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+      }
+
+      #stream {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          cursor: default;
+          user-select: none;
+          display: block;
+          overscroll-behavior: none;
+          touch-action: none;
+      }
+
+      #completion-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+          display: none;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          z-index: 10;
+          animation: fadeIn 0.3s ease-in-out;
+      }
+
+      #completion-overlay.show {
+          display: flex;
+      }
+
+      @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+      }
+
+      .completion-checkmark {
+          font-size: 80px;
+          margin-bottom: 24px;
+          animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+
+      @keyframes scaleIn {
+          from { transform: scale(0); }
+          to { transform: scale(1); }
+      }
+
+      .completion-title {
+          font-size: 32px;
+          font-weight: 600;
+          color: #4caf50;
+          margin-bottom: 16px;
+          text-align: center;
+      }
+
+      .completion-reason {
+          font-size: 16px;
+          color: #bbb;
+          margin-bottom: 32px;
+          text-align: center;
+          max-width: 80%;
+          line-height: 1.5;
+      }
+
+      .completion-message {
+          font-size: 14px;
+          color: #888;
+          text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="browser-window">
+      <div id="toolbar">
+        <span class="browser-icon">🌐</span>
+
+        <div class="nav-buttons">
+          <button id="back" class="nav-button" title="Back">←</button>
+          <button id="forward" class="nav-button" title="Forward">→</button>
+          <button id="reload" class="nav-button" title="Reload">⟳</button>
+        </div>
+
+        <div id="task-info"><span class="label">Task:</span>{{ reason }}</div>
+
+        <div id="status">
+          <span class="connecting"
+            ><span class="status-dot"></span>Connecting...</span
+          >
+        </div>
+      </div>
+
+      <div id="stream-container">
+        <img
+          id="stream"
+          src="/stream?session={{ session_id }}"
+          alt="Browser Stream"
+        />
+        <div id="completion-overlay">
+          <div class="completion-checkmark">✅</div>
+          <div class="completion-title">TASK COMPLETED</div>
+          <div class="completion-reason" id="completion-reason-text"></div>
+          <div class="completion-message">You may close this window</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const SESSION_ID = "{{ session_id }}";
+      const VIEWPORT_WIDTH = {{ viewport_width }};
+      const VIEWPORT_HEIGHT = {{ viewport_height }};
+
+      const stream = document.getElementById('stream');
+      const statusEl = document.getElementById('status').querySelector('span');
+      const backButton = document.getElementById('back');
+      const forwardButton = document.getElementById('forward');
+      const completionOverlay = document.getElementById('completion-overlay');
+      const completionReasonText = document.getElementById('completion-reason-text');
+      const ws = new WebSocket(`ws://${window.location.host}/ws?session=${SESSION_ID}`);
+      let mouseThrottle = null;
+
+      // Track stream connection
+      let streamConnected = false;
+
+      // Initialize navigation buttons as disabled
+      backButton.disabled = true;
+      forwardButton.disabled = true;
+
+      stream.onload = () => {
+          streamConnected = true;
+          updateStatus();
+      };
+
+      // Check if stream is actually showing frames
+      const checkStreamInterval = setInterval(() => {
+          if (stream.naturalWidth > 0 && stream.naturalHeight > 0 && !streamConnected) {
+              streamConnected = true;
+              updateStatus();
+              clearInterval(checkStreamInterval);
+          }
+      }, 500);
+
+      function updateStatus() {
+          if (streamConnected) {
+              statusEl.className = 'connected';
+              statusEl.innerHTML = '<span class="status-dot"></span>Connected';
+          } else {
+              statusEl.className = 'connecting';
+              statusEl.innerHTML = '<span class="status-dot"></span>Connecting...';
+          }
+      }
+
+      ws.onopen = () => console.log('WS Connected');
+      ws.onerror = (e) => console.error('WS Error:', e);
+
+      ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+
+          if (message.type === 'navigation_state') {
+              updateNavigationButtons(message.current, message.max_navigation);
+          } else if (message.type === 'task_completed') {
+              showCompletionOverlay(message.reason);
+          }
+      };
+
+      function updateNavigationButtons(current, maxNavigation) {
+          backButton.disabled = current === 0;
+          forwardButton.disabled = current === maxNavigation;
+      }
+
+      function showCompletionOverlay(reason) {
+          completionReasonText.textContent = reason;
+          completionOverlay.classList.add('show');
+          statusEl.className = 'completed';
+          statusEl.innerHTML = '<span class="status-dot"></span>Completed';
+      }
+
+      function send(data) {
+          if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(data));
+          }
+      }
+
+      backButton.onclick = () => {
+          if (!backButton.disabled) {
+              send({type: 'navigate', action: 'back'});
+          }
+      };
+      forwardButton.onclick = () => {
+          if (!forwardButton.disabled) {
+              send({type: 'navigate', action: 'forward'});
+          }
+      };
+      document.getElementById('reload').onclick = () => send({type: 'navigate', action: 'reload'});
+
+      function getCoords(e) {
+          const rect = stream.getBoundingClientRect();
+
+          // Calculate actual image dimensions within the container (object-fit: contain)
+          const containerAspect = rect.width / rect.height;
+          const imageAspect = VIEWPORT_WIDTH / VIEWPORT_HEIGHT;
+
+          let imageWidth, imageHeight, offsetX, offsetY;
+
+          if (imageAspect > containerAspect) {
+              // Image is wider - padding on top/bottom
+              imageWidth = rect.width;
+              imageHeight = rect.width / imageAspect;
+              offsetX = 0;
+              offsetY = (rect.height - imageHeight) / 2;
+          } else {
+              // Image is taller - padding on left/right
+              imageHeight = rect.height;
+              imageWidth = rect.height * imageAspect;
+              offsetX = (rect.width - imageWidth) / 2;
+              offsetY = 0;
+          }
+
+          // Get click position relative to container
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+
+          // Check if click is within actual image bounds
+          if (x < offsetX || x > offsetX + imageWidth ||
+              y < offsetY || y > offsetY + imageHeight) {
+              return null; // Outside image - in padding area
+          }
+
+          // Map to viewport coordinates
+          const scaleX = VIEWPORT_WIDTH / imageWidth;
+          const scaleY = VIEWPORT_HEIGHT / imageHeight;
+
+          return {
+              x: Math.round((x - offsetX) * scaleX),
+              y: Math.round((y - offsetY) * scaleY)
+          };
+      }
+
+      stream.onmousedown = (e) => {
+          const coords = getCoords(e);
+          if (!coords) return; // Ignore clicks on padding
+          send({type: 'mouse', action: 'mousedown', x: coords.x, y: coords.y, button: e.button});
+      };
+
+      stream.onmouseup = (e) => {
+          const coords = getCoords(e);
+          if (!coords) return; // Ignore clicks on padding
+          send({type: 'mouse', action: 'mouseup', x: coords.x, y: coords.y, button: e.button});
+      };
+
+      stream.onmousemove = (e) => {
+          // Throttle mouse move events to ~60 FPS
+          if (mouseThrottle) return;
+
+          mouseThrottle = setTimeout(() => {
+              mouseThrottle = null;
+          }, 16);
+
+          const coords = getCoords(e);
+          if (!coords) return; // Ignore moves on padding
+          send({type: 'mouse', action: 'mousemove', x: coords.x, y: coords.y});
+      };
+
+      stream.onwheel = (e) => {
+          e.preventDefault();
+          const coords = getCoords(e);
+          if (!coords) return; // Ignore wheel on padding
+          send({type: 'mouse', action: 'wheel', x: coords.x, y: coords.y, deltaX: e.deltaX, deltaY: e.deltaY});
+      };
+
+      document.onkeydown = (e) => {
+          send({type: 'keyboard', action: 'keydown', key: e.key, code: e.code, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey});
+      };
+
+      document.onkeyup = (e) => {
+          send({type: 'keyboard', action: 'keyup', key: e.key, code: e.code, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey});
+      };
+
+      stream.oncontextmenu = (e) => e.preventDefault();
+    </script>
+  </body>
+</html>
